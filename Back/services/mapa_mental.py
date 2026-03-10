@@ -121,8 +121,30 @@ Texto: "{texto}"
             
             # Devuelve solo el código Mermaid. React se encargará de renderizarlo.
             return mermaid_code
-            
+        
         except Exception as e:
+            # Check for RateLimitError even if caught as general Exception first
+            error_str = str(e)
+            if "429" in error_str or "quota" in error_str.lower():
+                print("⚠️ CUIDADO: Se excedió la cuota de OpenAI (Error 429) en Mapa Mental. Usando análisis local.")
+                
+                # --- Análisis de palabras clave básicas para el grafo ---
+                palabras = texto.replace(".", "").replace(",", "").split()
+                # Filtrar palabras cortas (probablemente stopwords)
+                palabras_clave = [p for p in palabras if len(p) > 5][:5]
+                
+                if not palabras_clave:
+                    palabras_clave = ["Sin", "Palabras", "Clave", "Detectadas"]
+
+                # Mock Mermaid Code dinámico
+                mock_mermaid = "graph TD\n"
+                mock_mermaid += '    root[Tema Detectado]\n'
+                
+                for i, palabra in enumerate(palabras_clave):
+                    mock_mermaid += f'    root --> N{i}[{palabra}]\n'
+                
+                return mock_mermaid
+            
             print(f"❌ Error generando mapa mental: {e}")
             return None  # Devuelve None si hay un error.
 

@@ -110,6 +110,19 @@ class GeneradorResumenAvanzado:
             [AQUÍ VA EL OBJETO JSON VÁLIDO]
             """
 
+        # --- NUEVOS PROMPTS DE TRANSFORMACIÓN (BREVE, DETALLADO, CUESTIONARIO, GUION) ---
+        elif tipo_audio == "breve":
+            return f"Sintetiza la siguiente transcripción en un resumen ejecutivo muy breve (3 frases máximo) y 3 puntos clave.\n\nTRANSCRIPCIÓN:\n{transcripcion}\n\nFORMATO: Markdown ||METADATOS|| JSON"
+        
+        elif tipo_audio == "detallado":
+            return f"Realiza un informe exhaustivo y detallado de la siguiente transcripción, analizando cada punto discutido.\n\nTRANSCRIPCIÓN:\n{transcripcion}\n\nFORMATO: Markdown ||METADATOS|| JSON"
+        
+        elif tipo_audio == "cuestionario":
+            return f"Crea un cuestionario de 5 preguntas de opción múltiple para evaluar la comprensión de esta transcripción.\n\nTRANSCRIPCIÓN:\n{transcripcion}\n\nFORMATO: Markdown ||METADATOS|| JSON"
+        
+        elif tipo_audio == "guion":
+            return f"Convierte esta transcripción en un guion estructurado con personajes y diálogos.\n\nTRANSCRIPCIÓN:\n{transcripcion}\n\nFORMATO: Markdown ||METADATOS|| JSON"
+
         # --- PROMPT POR DEFECTO (GENÉRICO) ---
         else: # "audio_normal" o cualquier otro caso
             return f"""
@@ -174,6 +187,50 @@ class GeneradorResumenAvanzado:
             print("✅ Análisis de OpenAI completado.")
             return resumen_md, metadatos
 
+        except openai.RateLimitError:
+            print("⚠️ CUIDADO: Se excedió la cuota de OpenAI (Error 429). Generando resumen local básico.")
+            
+            # --- Lógica de Resumen Local Básico ---
+            lineas = transcripcion.split('.')
+            resumen_corto = ". ".join(lineas[:3]) + "." if len(lineas) > 3 else transcripcion
+            
+            resumen_md = f"""
+# Resumen Local (Modo Sin Créditos)
+
+**Nota:** Se usó un análisis local básico porque la cuota de OpenAI se ha agotado.
+
+## Resumen Ejecutivo
+{resumen_corto}
+
+## Transcripción Detectada
+El sistema analizó exitosamente tu archivo. Aquí tienes los primeros 200 caracteres:
+_{transcripcion[:200]}..._
+
+## Plan de Acción
+| Acción | Responsable | Plazo |
+|--------|-------------|-------|
+| Revisar transcripción completa | Usuario | Hoy |
+| Recargar créditos OpenAI | Administrador | ASAP |
+"""
+            metadatos = {
+                "tema_principal": "Análisis Local del Archivo",
+                "personas_clave": ["Detectado en audio"],
+                "proyectos_mencionados": ["Bee-Scribe Local"],
+                "sentimiento_general": "Neutral (Analizado en Local)",
+                "nota": "Análisis realizado sin IA externa."
+            }
+            return resumen_md, metadatos
+
         except Exception as e:
             print(f"❌ Error al contactar la API de OpenAI: {e}")
-            raise ConnectionError(f"No se pudo completar la petición a OpenAI: {e}")
+            # Fallback genérico para no romper el flujo
+            print("⚠️ Error general en OpenAI. Usando modo MOCK/OFFLINE por seguridad.")
+            resumen_md = f"""
+# Resumen de Error
+
+**Error:** {str(e)}
+
+No se pudo generar el resumen real debido a un error de conexión o API.
+"""
+            metadatos = {"error": str(e)}
+            return resumen_md, metadatos

@@ -79,6 +79,51 @@ generador_resumen = GeneradorResumenAvanzado(api_key)
 generador_mapa = GeneradorMapaMental(api_key)
 buscador = BuscadorReunionesDB()
 
+class TransformRequest(BaseModel):
+    meeting_id: int
+    tipo_transformacion: str = Field(..., description="Tipo de transformación: breve, detallado, cuestionario, guion")
+
+@app.post("/api/meetings/transform", tags=["Meetings"])
+async def transform_meeting(
+    request: TransformRequest,
+    db: Session = Depends(get_db),
+    current_user: usuario_model.Usuario = Depends(auth.get_current_user)
+):
+    """
+    Re-procesa la transcripción de una reunión existente para generar un nuevo tipo de salida (cuestionario, guion, etc).
+    """
+    # 1. Buscar la reunión y verificar propiedad
+    meeting = db.query(reunion_model.Reunion).filter(
+        reunion_model.Reunion.id == request.meeting_id,
+        reunion_model.Reunion.user_id == current_user.id
+    ).first()
+
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Reunión no encontrada")
+
+    # 2. Generar el nuevo contenido usando la transcripción existente
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as executor:
+        # Reutilizamos el generador de resúmenes pero con el nuevo tipo
+        future_resumen = loop.run_in_executor(
+            executor, 
+            generador_resumen.generar_resumen_completo, 
+            meeting.transcripcion, 
+            meeting.titulo, 
+            [], # Participantes no son críticos para transformaciones
+            request.tipo_transformacion
+        )
+        nuevo_contenido_md, nuevos_metadatos = await future_resumen
+
+    # 3. Devolver el resultado (SIN guardar en DB para no sobrescribir el original, o podríamos guardar en un historial de versiones)
+    # Por ahora devolvemos el resultado efímero para que el frontend lo muestre
+    return {
+        "success": True,
+        "tipo": request.tipo_transformacion,
+        "contenido_md": nuevo_contenido_md,
+        "metadatos": nuevos_metadatos
+    }
+
 # --- ENDPOINTS DE AUTENTICACIÓN ---
 
 @app.post("/register", response_model=UserResponse, tags=["Auth"])

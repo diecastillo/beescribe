@@ -13,11 +13,12 @@ import soundfile as sf  # <-- ¡La librería clave!
 class AudioTranscriptor:
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_size = os.getenv("WHISPER_MODEL_SIZE", "base")
         print(f"✅ Whisper se ejecutará en el dispositivo: {self.device.upper()}")
         try:
-            print("🔄 Cargando el modelo Whisper 'base'...")
-            self.model = whisper.load_model("base", device=self.device)
-            print("✅ Modelo Whisper cargado y listo.")
+            print(f"🔄 Cargando el modelo Whisper '{self.model_size}'...")
+            self.model = whisper.load_model(self.model_size, device=self.device)
+            print(f"✅ Modelo Whisper '{self.model_size}' cargado y listo.")
         except Exception as e:
             print(f"❌ Error crítico al cargar el modelo Whisper: {e}")
             raise
@@ -26,7 +27,8 @@ class AudioTranscriptor:
         """Convierte cualquier audio a WAV usando una llamada directa a ffmpeg."""
         print(f"🔩 Forzando conversión a WAV usando FFmpeg directo...")
         archivo_wav_temporal = tempfile.mktemp(suffix=".wav")
-        ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe"
+        # Modified for macOS/Linux compatibility - assumes ffmpeg is in PATH
+        ffmpeg_path = "ffmpeg"
 
         command = [
             ffmpeg_path, "-i", ruta_origen, "-ac", "1", "-ar", "16000",
