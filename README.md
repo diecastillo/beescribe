@@ -1,9 +1,9 @@
 # Bee-Scribe
-🚀 Un proyecto que incluye un Frontend con React y un Backend con Python.
+🚀 Un proyecto que incluye un Frontend con JavaScript y un Backend con Python.
 
 ## Estructura del Proyecto
 
-- `frontend/`: Aplicación de interfaz de usuario construida con React y TailwindCSS.
+- `frontend/`: Aplicación de interfaz de usuario construida con React y JavaScript.
 - `Back/`: API construida con Python y FastAPI, encargada del procesamiento, autenticación y persistencia de datos.
 
 ## Configuración y Ejecución
