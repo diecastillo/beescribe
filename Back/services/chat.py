@@ -16,9 +16,23 @@ class ChatService:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.client = None
-        self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo-0125")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        if "3.5" in self.model:
+            self.model = "gpt-4o-mini"
         if api_key:
-            self.client = openai.OpenAI(api_key=self.api_key)
+            self.client = openai.OpenAI()
+        
+    def generate_tts(self, text: str, voice: str = "alloy"):
+        """Genera audio a partir de texto usando OpenAI TTS."""
+        if not self.client:
+            return None
+        
+        response = self.client.audio.speech.create(
+            model="tts-1",
+            voice=voice,
+            input=text
+        )
+        return response.content
         
     def chat_with_context(self, db: Session, user_id: int, query: str, meeting_ids: list = None):
         """
@@ -28,7 +42,7 @@ class ChatService:
             return "El servicio de IA no está configurado (falta API Key)."
 
         contexto = ""
-        system_prompt = "Eres Bee-Scribe AI, un asistente experto en gestión de reuniones y productividad. "
+        system_prompt = "Eres Bee-Scribe AI, un asistente experto en gestión de reuniones y productividad. SIEMPRE responde en español, de forma clara, profesional y concisa. "
         
         if meeting_ids and len(meeting_ids) > 0:
             # Limitar a MAX_MEETINGS

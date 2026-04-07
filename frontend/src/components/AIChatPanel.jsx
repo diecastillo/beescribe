@@ -22,6 +22,56 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   const [meetingFilter, setMeetingFilter] = useState('all');
   const messagesEndRef = useRef(null);
   const synthRef = useRef(window.speechSynthesis);
+  const audioRef = useRef(null);
+  const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('bee_voice') || 'alloy');
+  const [chatHistory, setChatHistory] = useState(() => {
+    const saved = localStorage.getItem('bee_chat_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('bee_chat_history', JSON.stringify(chatHistory));
+  }, [chatHistory]);
+
+  const createNewChat = () => {
+    // Solo guardar el historial si hay mensajes del usuario
+    if (messages.length > 2 || (messages.length === 2 && messages[1].role === 'user')) {
+      const newHistoryEntry = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        messages: [...messages],
+        meetings: [...selectedMeetingIds]
+      };
+      setChatHistory(prev => [newHistoryEntry, ...prev].slice(0, 20));
+    }
+    setMessages([{ role: 'ai', content: initialMessage || '¡Hola! 🐝 Soy Bee-Scribe AI. ¿En qué puedo ayudarte hoy?' }]);
+    setSelectedMeetingIds(meetingId ? [meetingId] : []);
+    setHasWelcomed(false);
+    setShowHistory(false);
+  };
+
+  const loadHistorySession = (session) => {
+    setMessages(session.messages);
+    setSelectedMeetingIds(session.meetings || []);
+    setShowHistory(false);
+    setHasWelcomed(true);
+  };
+
+  const deleteHistorySession = (id, e) => {
+    e.stopPropagation();
+    setChatHistory(prev => prev.filter(s => s.id !== id));
+  };
+
+  const voiceOptions = [
+    { id: 'browser', label: 'Navegador (Gratis)' },
+    { id: 'alloy', label: 'Alloy (OA)' },
+    { id: 'echo', label: 'Echo (OA)' },
+    { id: 'fable', label: 'Fable (OA)' },
+    { id: 'onyx', label: 'Onyx (OA)' },
+    { id: 'nova', label: 'Nova (OA)' },
+    { id: 'shimmer', label: 'Shimmer (OA)' },
+  ];
 
   // Auto-abrir chat con reuniones preseleccionadas desde CalendarPage/HomePage
   useEffect(() => {
@@ -33,28 +83,61 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   }, [autoOpen, preSelectedIds]);
 
   // Función para hablar
-  const speak = useCallback((text) => {
+  const speak = useCallback(async (text) => {
     if (isMuted || !text) return;
     
-    // Cancelar cualquier voz anterior
+    // Parar cualquier audio previo
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     synthRef.current.cancel();
 
-    // Limpiar el texto de markdown para que suene mejor
     const plainText = text.replace(/[*#_\[\]()]/g, '').replace(/`[^`]*`/g, '');
-    
-    const utterance = new SpeechSynthesisUtterance(plainText);
-    
-    // Intentar encontrar una voz en español
-    const voices = synthRef.current.getVoices();
-    const spanishVoice = voices.find(v => v.lang.includes('es'));
-    if (spanishVoice) utterance.voice = spanishVoice;
-    
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    
-    synthRef.current.speak(utterance);
-  }, [isMuted]);
+
+    if (selectedVoice === 'browser') {
+      const utterance = new SpeechSynthesisUtterance(plainText);
+      const voices = synthRef.current.getVoices();
+      const spanishVoice = voices.find(v => v.lang.includes('es'));
+      if (spanishVoice) utterance.voice = spanishVoice;
+      
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      synthRef.current.speak(utterance);
+    } else {
+      try {
+        setIsSpeaking(true);
+        const response = await apiClient.post('/tts', { text: plainText, voice: selectedVoice }, { responseType: 'blob' });
+        const audioUrl = URL.createObjectURL(response.data);
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+        audio.onended = () => {
+          setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = () => {
+          setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.play();
+      } catch (err) {
+        console.error("Error en OpenAI TTS, usando fallback de navegador:", err);
+        // Fallback al navegador si OpenAI falla (ej. por API key inválida)
+        const utterance = new SpeechSynthesisUtterance(plainText);
+        const voices = synthRef.current.getVoices();
+        const spanishVoice = voices.find(v => v.lang.includes('es'));
+        if (spanishVoice) utterance.voice = spanishVoice;
+        
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        
+        synthRef.current.speak(utterance);
+      }
+    }
+  }, [isMuted, selectedVoice]);
 
   // Saludo inicial
   useEffect(() => {
@@ -75,14 +158,16 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
     return () => clearInterval(checkSpeaking);
   }, [isSpeaking]);
 
-  // Guardar preferencia de mudo
+  // Guardar preferencia de mudo y voz
   useEffect(() => {
     localStorage.setItem('bee_muted', isMuted);
+    localStorage.setItem('bee_voice', selectedVoice);
     if (isMuted) {
       synthRef.current.cancel();
+      if (audioRef.current) audioRef.current.pause();
       setIsSpeaking(false);
     }
-  }, [isMuted]);
+  }, [isMuted, selectedVoice]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -234,6 +319,31 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
           </div>
           <div className="flex items-center gap-2">
             <button 
+              onClick={createNewChat}
+              className="chat-action-btn"
+              title="Nueva conversación"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            </button>
+            <button 
+              onClick={() => setShowHistory(!showHistory)}
+              className={`chat-action-btn ${showHistory ? 'active' : ''}`}
+              title="Ver historial"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </button>
+            <div className="w-px h-6 bg-gray-100 mx-1"></div>
+            <select 
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              className="text-[10px] bg-gray-50 border-gray-100 rounded-lg px-2 py-1 font-bold text-gray-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
+              title="Cambiar voz de la IA"
+            >
+              {voiceOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <button 
               onClick={() => setIsMuted(!isMuted)} 
               className={`p-2 rounded-full transition-all ${isMuted ? 'text-gray-300 hover:bg-gray-100' : 'text-amber-500 bg-amber-50 hover:bg-amber-100'}`}
               title={isMuted ? "Activar voz" : "Silenciar voz"}
@@ -319,16 +429,56 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
         )}
         
         <div className="chat-sidebar-messages">
-          {!isMuted && (
-            <div className="bee-assistant-container">
-              <div className="bee-robot-wrapper">
-                <img 
-                  src={isSpeaking ? "/AbejaChatFinal.gif" : "/AbejaChat.jpg"} 
-                  alt="Bee Assistant" 
-                  className="bee-robot-image" 
-                />
+          {/* Panel de Historial */}
+          {showHistory && (
+            <div className="history-overlay">
+              <div className="chat-sidebar-header" style={{borderBottom: '1px solid #f3f4f6', padding: '12px 24px'}}>
+                <span className="text-sm font-bold text-gray-700">Conversaciones Previas</span>
+                <button onClick={() => setShowHistory(false)} className="chat-action-btn">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
-              {isSpeaking && <div className="bee-speaking-vibrance"></div>}
+              <div className="history-list">
+                {chatHistory.length === 0 ? (
+                  <div className="history-empty">
+                    <svg className="w-12 h-12 text-gray-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">Historial vacío</p>
+                  </div>
+                ) : (
+                  chatHistory.map(session => (
+                    <div key={session.id} className="history-item" onClick={() => loadHistorySession(session)}>
+                      <div className="flex justify-between items-start">
+                        <div className="title">
+                          {([...session.messages].reverse().find(m => m.role === 'user')?.content.slice(0, 40) || 'Nueva Consulta')}...
+                        </div>
+                        <button onClick={(e) => deleteHistorySession(session.id, e)} className="text-gray-300 hover:text-red-400 p-1">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                      </div>
+                      <div className="meta">
+                        <span>{new Date(session.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
+                        <span>{session.messages.length} mensajes</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* La abeja solo se muestra si el sonido está activo y NO estamos viendo el historial */}
+          {!isMuted && !showHistory && (
+            <div className={`bee-assistant-sticky-wrapper ${isSpeaking ? 'active' : ''}`}>
+              <div className="bee-assistant-container">
+                <div className="bee-robot-wrapper">
+                  <img 
+                    src={isSpeaking ? "/AbejaChatFinal.gif" : "/AbejaChat.jpg"} 
+                    alt="Bee Assistant" 
+                    className="bee-robot-image" 
+                  />
+                </div>
+                {isSpeaking && <div className="bee-speaking-vibrance"></div>}
+              </div>
             </div>
           )}
           

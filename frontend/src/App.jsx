@@ -14,6 +14,7 @@ const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const ResultDetailsPage = lazy(() => import('./pages/ResultDetailsPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 
 // Importa el componente que protege las rutas
 import ProtectedRoute from './auth/ProtectedRoute';
@@ -45,6 +46,7 @@ function App() {
             <Route path="/results/:meetingId" element={<ResultDetailsPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/perfil" element={<ProfilePage />} />
+            <Route path="/statistics" element={<StatisticsPage />} />
             
             {/* Si en el futuro tienes más páginas protegidas, irían aquí */}
             {/* <Route path="/profile" element={<ProfilePage />} /> */}

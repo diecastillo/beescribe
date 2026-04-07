@@ -10,7 +10,7 @@ if api_key:
     print(f"Key length: {len(api_key)}")
     if api_key.endswith(' '):
         print("⚠️ WARNING: Key has a trailing space!")
-    client = OpenAI(api_key=api_key)
+    client = OpenAI()
     try:
         response = client.models.list()
         print("✅ API Key is valid!")

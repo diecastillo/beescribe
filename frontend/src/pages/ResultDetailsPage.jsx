@@ -7,13 +7,35 @@ import mermaid from 'mermaid';
 import apiClient from '../api';
 import html2pdf from 'html2pdf.js';
 import AIChatPanel from '../components/AIChatPanel';
+import InteractiveQuiz from '../components/InteractiveQuiz';
 import '../App.css'; // Asegúrate de que tus estilos base están aquí
 
 // --- Componentes de UI (pueden moverse a un archivo de componentes compartidos) ---
 const Icon = ({ path, className = "w-6 h-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={path} /></svg>);
-const ICONS = { summary: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", mindmap: "M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122", chevronDown: "M19 9l-7 7-7-7", bolt: "M13 10V3L4 14h7v7l9-11h-7z", question: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", film: "M7 4h10M7 8h10M5 22h14a2 2 0 002-2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v16a2 2 0 002 2z" };
+const ICONS = { summary: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", mindmap: "M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122", chevronDown: "M19 9l-7 7-7-7", bolt: "M13 10V3L4 14h7v7l9-11h-7z", question: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", film: "M7 4h10M7 8h10M5 22h14a2 2 0 002-2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v16a2 2 0 002 2z", meeting: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z", podcast: "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636", conversation: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z", file: "M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" };
 
-mermaid.initialize({ startOnLoad: true, theme: 'forest', securityLevel: 'loose' });
+mermaid.initialize({ 
+  startOnLoad: true, 
+  theme: 'forest', 
+  securityLevel: 'loose',
+  flowchart: {
+    useMaxWidth: false,
+    htmlLabels: true,
+    nodeSpacing: 50,
+    rankSpacing: 80,
+    padding: 20,
+    wrappingWidth: 250,
+    curve: 'basis'
+  },
+  themeVariables: {
+    fontSize: '16px',
+    fontFamily: 'Outfit, sans-serif',
+    primaryColor: '#fbbf24',
+    nodeBorder: '#b45309',
+    mainBkg: '#fffbeb',
+    lineColor: '#d97706'
+  }
+});
 
 const customComponents = {
   li: ({ children }) => (
@@ -170,6 +192,7 @@ function ResultDetailsPage() {
           summary: data.resumen_md,
           mindmap: data.mapa_mermaid,
           createdAt: data.fecha_creacion,
+          metadatos: data.metadatos,
         });
       } catch (err) {
         setError('No se pudo cargar el análisis. Es posible que no exista o haya ocurrido un error.');
@@ -229,11 +252,16 @@ function ResultDetailsPage() {
       <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-100 shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
           <div className="bg-amber-400 p-2 rounded-xl shadow-sm flex items-center justify-center">
-            <svg className="w-5 h-5 text-gray-900 fill-current" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z" /></svg>
+            <Icon path={ICONS[meeting.metadatos?.tipo_audio] || ICONS.file} className="w-5 h-5 text-gray-900" />
           </div>
           <div>
-            <p className="text-gray-400 text-xxs font-semibold">Análisis</p>
-            <h1 className="text-lg font-bold text-gray-800">Plan de acción</h1>
+            <p className="text-gray-400 text-xxs font-semibold">
+              {meeting.metadatos?.tipo_audio === 'reunion' ? 'Reunión de Trabajo' : 
+               meeting.metadatos?.tipo_audio === 'podcast' ? 'Podcast o Entrevista' : 
+               meeting.metadatos?.tipo_audio === 'conversacion' ? 'Conversación Informal' : 
+               'Análisis General'}
+            </p>
+            <h1 className="text-lg font-bold text-gray-800">{meeting.title || "Sin título"}</h1>
           </div>
         </div>
         
@@ -288,18 +316,25 @@ function ResultDetailsPage() {
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
                     <div className="flex justify-between items-center mb-3">
                       <h4 className="text-lg font-bold text-gray-800">{transformResult.tipo.charAt(0).toUpperCase() + transformResult.tipo.slice(1)}</h4>
-                      <button 
-                        onClick={() => handleOpenPreview(transformResult.tipo, transformResult.contenido_md)}
-                        className="flex items-center gap-1.5 text-amber-600 hover:text-amber-700 font-semibold text-xs transition-colors cursor-pointer"
-                      >
-                        <Icon path={ICONS.summary} className="w-4 h-4" /> Vista Previa PDF
-                      </button>
+                      {transformResult.tipo !== 'cuestionario' && (
+                        <button 
+                          onClick={() => handleOpenPreview(transformResult.tipo, transformResult.contenido_md)}
+                          className="flex items-center gap-1.5 text-amber-600 hover:text-amber-700 font-semibold text-xs transition-colors cursor-pointer"
+                        >
+                          <Icon path={ICONS.summary} className="w-4 h-4" /> Vista Previa PDF
+                        </button>
+                      )}
                     </div>
-                    <div id="transform-content" className="prose prose-indigo max-w-none">
-                      <ReactMarkdown components={customComponents}>{transformResult.contenido_md}</ReactMarkdown>
-                    </div>
+                    {transformResult.tipo === 'cuestionario' && transformResult.metadatos?.preguntas ? (
+                      <InteractiveQuiz data={transformResult.metadatos} />
+                    ) : (
+                      <div id="transform-content" className="prose prose-indigo max-w-none">
+                        <ReactMarkdown components={customComponents}>{transformResult.contenido_md}</ReactMarkdown>
+                      </div>
+                    )}
                   </div>
                 )}
+
                 
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                   <div className="flex justify-between items-center mb-3">
@@ -327,8 +362,8 @@ function ResultDetailsPage() {
                         <Icon path={ICONS.mindmap} className="w-4 h-4" /> Vista Previa PDF
                       </button>
                     </div>
-                    <div className="mermaid-container bg-gray-50 p-4 rounded-xl overflow-auto border border-gray-100">
-                      <div id={`mermaid-details-${meeting.id}`} className="mermaid"></div>
+                    <div className="mermaid-container bg-gray-50 p-6 rounded-xl overflow-auto border border-gray-100 shadow-inner" style={{ minHeight: '500px' }}>
+                      <div id={`mermaid-details-${meeting.id}`} className="mermaid" style={{ minWidth: 'max-content' }}></div>
                     </div>
                   </div>
                 )}
@@ -388,8 +423,10 @@ function ResultDetailsPage() {
 
                           <div className="prose prose-sm prose-amber max-w-none leading-relaxed">
                             {previewData.type === 'mermaid' ? (
-                              <div id="mermaid-preview-container" className="mermaid flex justify-center py-4">
-                                {/* SVG renderizado */}
+                              <div className="overflow-auto w-full flex justify-center py-8">
+                                <div id="mermaid-preview-container" className="mermaid">
+                                  {/* SVG renderizado */}
+                                </div>
                               </div>
                             ) : (
                               <ReactMarkdown components={customComponents}>{previewData.content}</ReactMarkdown>

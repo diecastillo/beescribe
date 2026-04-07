@@ -113,15 +113,20 @@ export const HistoryModal = ({ isOpen, onClose, history, onSelect, selectedId, i
               {filteredHistory.map(item => (
                 <div key={item.id} onClick={() => item.status === 'COMPLETED' && onSelect(item.id)} className={`py-3 border-b border-gray-100 flex flex-col transition-colors ${selectedId === item.id ? 'bg-amber-50/50 rounded-xl px-2' : 'hover:bg-gray-50/50'} ${item.status !== 'COMPLETED' ? 'cursor-default opacity-80' : 'cursor-pointer'}`}>
                   <div className="flex justify-between items-start">
-                    <div>
-                      <strong className="text-base font-bold text-gray-800">{item.title || "Análisis sin título"}</strong>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</span>
-                        {item.status !== 'COMPLETED' && (
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${item.status === 'FAILED' ? 'text-red-400' : item.status === 'CANCELLED' ? 'text-gray-400' : 'text-amber-500 animate-pulse'}`}>
-                            {item.status === 'PENDING' ? 'En cola' : item.status === 'FAILED' ? 'Error' : item.status === 'CANCELLED' ? 'Cancelado' : 'Procesando'}
-                          </span>
-                        )}
+                    <div className="flex gap-3">
+                      <div className="mt-1 text-gray-400">
+                        <Icon path={ICONS[item.metadatos?.tipo_audio] || ICONS.file} className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <strong className="text-base font-bold text-gray-800">{item.title || "Análisis sin título"}</strong>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</span>
+                          {item.status !== 'COMPLETED' && (
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${item.status === 'FAILED' ? 'text-red-400' : item.status === 'CANCELLED' ? 'text-gray-400' : 'text-amber-500 animate-pulse'}`}>
+                              {item.status === 'PENDING' ? 'En cola' : item.status === 'FAILED' ? 'Error' : item.status === 'CANCELLED' ? 'Cancelado' : 'Procesando'}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {item.status === 'COMPLETED' ? (

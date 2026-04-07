@@ -12,7 +12,7 @@ import pyzipper
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import text
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -232,6 +232,7 @@ class MeetingResponse(BaseModel):
     status: str = "PENDING"
     scheduled_at: Optional[datetime] = None
     progress: int = 0
+    metadatos: Optional[Dict] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -241,7 +242,11 @@ class ShareRequest(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     meeting_id: Optional[int] = None
-    meeting_ids: Optional[List[int]] = None  # Para análisis multi-reunión (máx 5)
+    meeting_ids: Optional[List[int]] = None
+
+class TTSRequest(BaseModel):
+    text: str
+    voice: Optional[str] = "alloy"  # Para análisis multi-reunión (máx 5)
 
 # --- SERVICIOS ---
 
@@ -283,11 +288,12 @@ async def transform_meeting(
 
     # 2. Generar el nuevo contenido usando la transcripción existente
     # ¡IMPORTANTE! Asegurarse de DECRIPTAR la transcripción antes de mandarla a la IA
-    print(f"DEBUG: Transforming meeting {request.meeting_id} to {request.tipo_transformacion}")
+    log_step(f"🔄 [Transform] Transformando reunión {request.meeting_id} a '{request.tipo_transformacion}'")
     transcripcion_clara = decrypt_str(meeting.transcripcion)
-    print(f"DEBUG: Decrypted transcription length: {len(transcripcion_clara) if transcripcion_clara else 0}")
+    log_step(f"🔄 [Transform] Transcripción descifrada: {len(transcripcion_clara) if transcripcion_clara else 0} caracteres")
     if not transcripcion_clara or not transcripcion_clara.strip():
-        print("DEBUG: ALERT - Transcription is empty after decryption!")
+        log_step("❌ [Transform] ALERTA - La transcripción está vacía después de descifrar!")
+        raise HTTPException(status_code=400, detail="La transcripción de esta reunión está vacía.")
 
     
     loop = asyncio.get_event_loop()
@@ -303,8 +309,9 @@ async def transform_meeting(
         )
         nuevo_contenido_md, nuevos_metadatos = await future_resumen
 
-    # 3. Devolver el resultado (SIN guardar en DB para no sobrescribir el original, o podríamos guardar en un historial de versiones)
-    # Por ahora devolvemos el resultado efímero para que el frontend lo muestre
+    log_step(f"✅ [Transform] Resultado para '{request.tipo_transformacion}': {len(nuevo_contenido_md)} caracteres de contenido")
+    
+    # 3. Devolver el resultado (SIN guardar en DB para no sobrescribir el original)
     return {
         "success": True,
         "tipo": request.tipo_transformacion,
@@ -373,7 +380,7 @@ async def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db))
 async def read_users_me(current_user: Usuario = Depends(auth.get_current_user)):
     return current_user
 
-@app.put("/users/me", tags=["Auth"])
+from core.logger import log_step
 async def update_user_profile(
     alias: Optional[str] = Form(None),
     foto: Optional[UploadFile] = File(None),
@@ -440,19 +447,20 @@ def process_audio_background(reunion_id: int):
             finally:
                 inner_db.close()
 
+        log_step(f"🎬 [Step 1/3] Iniciando TRANSCRIPCIÓN LOCAL (Whisper) para reunión {reunion_id}...")
         texto_transcrito = transcriptor.transcribir_archivo(temp_file_path, check_cancelled=check_if_cancelled)
         
         # Verificar si se canceló durante la transcripción
         if not texto_transcrito and check_if_cancelled():
-            print(f"🛑 [Background] Reunión {reunion_id} cancelada durante el proceso de transcripción.")
+            log_step(f"🛑 [Background] Reunión {reunion_id} cancelada durante el proceso de transcripción.")
             return
 
-        print(f"✅ [Background] Transcripción completada: {len(texto_transcrito)} caracteres.")
+        log_step(f"✅ [Step 1/3] Transcripción completada: {len(texto_transcrito)} caracteres.")
         
         # Verificar cancelación después de transcripción
         db.refresh(reunion)
         if reunion.status == "CANCELLED":
-            print(f"🛑 [Background] Reunión {reunion_id} cancelada tras transcripción.")
+            log_step(f"🛑 [Background] Reunión {reunion_id} cancelada tras transcripción.")
             return
 
         if not texto_transcrito or not texto_transcrito.strip():
@@ -463,23 +471,28 @@ def process_audio_background(reunion_id: int):
 
         # 2. Generar Resumen y Mapa Mental
         lista_participantes = [p.strip() for p in participantes.split(',') if p.strip()]
+        log_step(f"🎬 [Step 2/3] Enviando texto a OpenAI para RESUMEN (Modelo: {generador_resumen.model})...")
         resumen_md, metadatos_ia = generador_resumen.generar_resumen_completo(texto_transcrito, titulo, lista_participantes, tipo_audio)
         
         # Verificar cancelación antes del mapa mental
         db.refresh(reunion)
         if reunion.status == "CANCELLED":
-            print(f"🛑 [Background] Reunión {reunion_id} cancelada antes del mapa mental.")
+            log_step(f"🛑 [Background] Reunión {reunion_id} cancelada antes del mapa mental.")
             return
+
+        log_step(f"✅ [Step 2/3] Resumen generado con éxito.")
 
         reunion.progress = 85
         db.commit()
         
+        log_step(f"🎬 [Step 3/3] Enviando texto a OpenAI para MAPA MENTAL...")
         mapa_mermaid = generador_mapa.generar_mapa_mental(texto_transcrito)
+        log_step(f"✅ [Step 3/3] Mapa mental generado con éxito.")
         
         # Verificar cancelación final
         db.refresh(reunion)
         if reunion.status == "CANCELLED":
-            print(f"🛑 [Background] Reunión {reunion_id} cancelada al final.")
+            log_step(f"🛑 [Background] Reunión {reunion_id} cancelada al final.")
             return
 
         # 3. Guardar / Cifrar
@@ -494,8 +507,8 @@ def process_audio_background(reunion_id: int):
             
     except Exception as e:
         import traceback
-        traceback.print_exc()
-        print(f"❌ [Background] Error en procesar reunión {reunion_id}: {str(e)}")
+        error_detailed = traceback.format_exc()
+        log_step(f"❌ [ERROR CRÍTICO] Reunión {reunion_id}:\n{error_detailed}")
         reunion = db.query(Reunion).filter(Reunion.id == reunion_id).first()
         if reunion:
             reunion.transcripcion = encrypt_str(f"[FALLIDO: {str(e)}]")
@@ -819,4 +832,20 @@ async def chat_ai(
     except Exception as e:
         print(f"❌ Error en endpoint de chat: {e}")
         raise HTTPException(status_code=500, detail=f"Error en el chat de IA: {str(e)}")
+
+@app.post("/tts", tags=["Chat"])
+async def text_to_speech(
+    request: TTSRequest,
+    current_user: Usuario = Depends(auth.get_current_user)
+):
+    try:
+        audio_content = chat_service.generate_tts(request.text, request.voice)
+        if not audio_content:
+            raise HTTPException(status_code=500, detail="Error generating audio content")
+            
+        return StreamingResponse(io.BytesIO(audio_content), media_type="audio/mpeg")
+    except Exception as e:
+        print(f"❌ Error en endpoint de TTS: {e}")
+        raise HTTPException(status_code=500, detail=f"Error en servicio de voz: {str(e)}")
+
 

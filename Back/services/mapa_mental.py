@@ -1,3 +1,4 @@
+from core.logger import log_step
 from openai import OpenAI
 from datetime import datetime
 import os
@@ -10,6 +11,9 @@ class GeneradorMapaMental:
         mindmap_flag = os.getenv("USE_OPENAI_MINDMAP", base_flag)
         self.use_openai = mindmap_flag.lower() == "true"
         self.api_key = api_key
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        if "3.5" in self.model:
+            self.model = "gpt-4o-mini"
         self.client = None
         self.export_folder = "mapas_mentales"
         os.makedirs(self.export_folder, exist_ok=True)
@@ -19,7 +23,7 @@ class GeneradorMapaMental:
             return
         try:
             # Lazy initialization to avoid SSLError during startup on some systems
-            self.client = OpenAI(api_key=self.api_key)
+            self.client = OpenAI()
         except Exception as e:
             print(f"❌ Error al inicializar el cliente de OpenAI en MapaMental: {e}")
             self.use_openai = False
@@ -50,10 +54,10 @@ class GeneradorMapaMental:
             indent = len(line) - len(line.lstrip())
             level = indent // 4 + 1
             
-            # Limpiar y acortar texto del nodo
+            # Limpiar y acortar texto del nodo (permitir hasta 60 caracteres)
             node_text = stripped.replace('"', "'").strip()
-            if len(node_text) > 40:  # Limitar longitud
-                node_text = node_text[:37] + "..."
+            if len(node_text) > 60:
+                node_text = node_text[:57] + "..."
             
             current_id = make_id()
             graph_lines.append(f'{current_id}["{node_text}"]')
@@ -162,7 +166,7 @@ class GeneradorMapaMental:
         """
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=400,
@@ -197,32 +201,37 @@ class GeneradorMapaMental:
             texto_para_mapa = texto
 
         prompt = f"""
-Crea un mapa mental CONCISO del siguiente texto. 
+Crea un mapa mental del siguiente texto.
 
-REGLAS ESTRICTAS:
-- Solo ideas CLAVE, sin repeticiones
-- Máximo 3 niveles de profundidad
-- Frases cortas (máximo 5 palabras por idea)
+REGLAS ESTRICTAS (MUY IMPORTANTE):
+- EXACTAMENTE entre 4 y 6 ideas principales (NO MÁS DE 6)
+- Cada idea principal puede tener entre 1 y 3 subtemas (NO MÁS DE 3)
+- NO añadas un tercer nivel de profundidad
+- Frases cortas (máximo 6 palabras por idea)
+- Sin repeticiones
 - Sin explicaciones adicionales
-- Formato: líneas con guiones y sangrías
+- Solo el formato de guiones y sangrías
 
-Ejemplo de formato:
-- Idea principal 1
-    - Subtema A
-    - Subtema B
-- Idea principal 2
-    - Subtema C
+Ejemplo EXACTO del formato esperado:
+- Tema central uno
+    - Detalle A
+    - Detalle B
+- Tema central dos
+    - Detalle C
+    - Detalle D
+- Tema central tres
+    - Detalle E
 
-Texto: "{texto_para_mapa}"
+Texto: \"{texto_para_mapa}\"
 """
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.model,
                 messages=[
-                    {"role": "user", "content": prompt}
+                    {{"role": "user", "content": prompt}}
                 ],
-                max_tokens=500,
+                max_tokens=600,
                 temperature=0.3
             )
             
@@ -239,9 +248,7 @@ Texto: "{texto_para_mapa}"
                 print("⚠️ Error de longitud de contexto en OpenAI. Usando fallback local.")
             elif "429" in error_str or "quota" in error_str.lower():
                 print("⚠️ Cuota excedida en OpenAI. Usando fallback local.")
-            else:
-                print(f"❌ Error inesperado en OpenAI: {e}")
-                
+            log_step(f"❌ Error inesperado en OpenAI en MapaMental: {e}")
             return self._generar_mapa_local(texto)
 
 if __name__ == "__main__":

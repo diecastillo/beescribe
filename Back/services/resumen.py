@@ -1,5 +1,6 @@
 # services/resumen.py
 
+from core.logger import log_step
 import openai
 import json
 import os
@@ -24,7 +25,10 @@ class GeneradorResumenAvanzado:
                 raise ValueError("La clave de API de OpenAI es obligatoria cuando USE_OPENAI_SUMMARY=True.")
             self.api_key = api_key
             self.client = None
-            self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+            # Forzamos gpt-4o-mini para asegurar calidad y evitar fallos de contexto antiguos
+            self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            if "3.5" in self.model:
+                self.model = "gpt-4o-mini"
             print(f"✅ Generador de resúmenes con OpenAI listo (MODO ONLINE). Modelo: {self.model}")
         else:
             print(f"DEBUG: use_openai is False. base_flag={base_flag}, summary_flag={summary_flag}")
@@ -38,7 +42,7 @@ class GeneradorResumenAvanzado:
         try:
             # Simplificamos la inicialización del cliente. 
             # OpenAI ya maneja sus propios certificados por defecto de forma robusta.
-            self.client = openai.OpenAI(api_key=self.api_key)
+            self.client = openai.OpenAI()
         except Exception as e:
             print(f"❌ Error al inicializar el cliente de OpenAI: {e}")
             self.use_openai = False
@@ -290,36 +294,44 @@ PERSONA A: {resumen_corto}
 
         elif tipo_audio == "cuestionario":
             return f"""
-            Actúa como un instructor pedagógico experto. Crea un cuestionario INTERACTIVO para validar la comprensión de la siguiente transcripción.
+            Actúa como un instructor pedagógico experto. Crea un cuestionario de EXACTAMENTE 10 preguntas para validar la comprensión de la siguiente transcripción.
 
-            ## Mensaje de Bienvenida
-            Escribe ÚNICAMENTE un mensaje corto (máximo 1 línea) avisando que el cuestionario interactivo está listo. 
-            NO incluyas las preguntas, ni opciones, ni ningún otro contenido en Markdown.
+            ## Tarea 1: Cuestionario en Markdown (VISIBLE PARA EL USUARIO)
+            Escribe el cuestionario completo en formato Markdown con este formato:
 
-            REGLAS DE FORMATO CRÍTICAS:
-            - NO incluyas preguntas en esta sección.
-            - NO uses bloques de código (```).
-            - NO incluyas "Metadatos" o "JSON" en el texto.
-            
-            IMPORTANTE: Solo texto plano muy breve.
+            # 📝 Cuestionario de Evaluación
 
-            **Tarea 2: Estructura de Datos en JSON (PARA PROCESAMIENTO INTERNO)**
-            Genera un objeto JSON que contenga EXACTAMENTE 10 preguntas de alta especificidad.
-            
+            ## Pregunta 1
+            **¿[texto de la pregunta]?**
+
+            a) Opción A
+            b) Opción B
+            c) Opción C
+            d) Opción D
+
+            ✅ **Respuesta correcta:** [letra]) [texto de la opción correcta]
+            💡 **Explicación:** [por qué es correcta, citando el audio]
+
+            ---
+
+            (Repetir para las 10 preguntas)
+
             REGLAS DE ORO PARA LAS PREGUNTAS:
             1. **PROHIBIDO** hacer preguntas genéricas (ej: "¿De qué trata el audio?", "¿Cómo es el tono?").
             2. **OBLIGATORIO** preguntar sobre datos concretos: "¿Qué cifra mencionó X sobre el proyecto Y?", "¿Cuál fue el nombre de la herramienta citada?", "¿Quién dijo que el plazo terminaba en octubre?".
             3. Si no hay datos numéricos, pregunta sobre opiniones específicas o argumentos detallados de personas nombradas.
             4. Cada pregunta debe demostrar que el usuario realmente escuchó el contenido detallado.
-            
-            CADA pregunta debe seguir esta estructura estrictamente:
-            - id: número entero correlativo.
-            - pregunta: texto de la pregunta (opción múltiple).
-            - opciones: un array de EXACTAMENTE 4 textos (opciones A, B, C y D).
-            - respuesta_correcta: número 0, 1, 2 o 3 indicando el índice de la opción correcta.
-            - explicacion: texto breve explicando por qué es la respuesta correcta citando o parafraseando lo dicho en el audio.
+            5. Genera EXACTAMENTE 10 preguntas, ni más ni menos.
+            6. Las preguntas deben cubrir distintas partes del audio, no solo el inicio.
 
-            IMPORTANTE: La respuesta final DEBE contener la cadena "||METADATOS||" y justo después el bloque JSON puro, sin texto adicional después del JSON.
+            REGLAS DE FORMATO CRÍTICAS:
+            - NO uses bloques de código (```).
+            - NO incluyas "Metadatos" o "JSON" en el texto visible.
+            
+            ## Tarea 2: Estructura de Datos en JSON (PARA PROCESAMIENTO INTERNO)
+            Después del cuestionario markdown, incluye el separador ||METADATOS|| seguido de un JSON con las mismas 10 preguntas en formato estructurado.
+
+            IMPORTANTE: La respuesta final DEBE contener la cadena "||METADATOS||" y justo después el bloque JSON puro.
 
             **TRANSCRIPCIÓN:**
             ---
@@ -327,7 +339,7 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
-            [TEXTO MARKDOWN DE LA VISTA PREVIA]
+            [CUESTIONARIO COMPLETO EN MARKDOWN CON LAS 10 PREGUNTAS VISIBLES]
             ||METADATOS||
             {{
               "preguntas": [
@@ -338,6 +350,7 @@ PERSONA A: {resumen_corto}
               "puntos_totales": 10
             }}
             """
+
 
         elif tipo_audio == "guion":
             return f"""
@@ -443,8 +456,10 @@ PERSONA A: {resumen_corto}
             
         return [f for f in fragmentos if f.strip()]
 
-    def _resumir_fragmento(self, fragmento: str, max_tokens: int = 1500, target_model: str = "gpt-3.5-turbo") -> str:
+    def _resumir_fragmento(self, fragmento: str, max_tokens: int = 1500, target_model: str = None) -> str:
         """Genera notas detalladas de un fragmento para no perder información en el Map-Reduce."""
+        if target_model is None:
+            target_model = self.model
         prompt = f"""
         Extrae NOTAS DETALLADAS del siguiente fragmento de audio. 
         Tu objetivo no es resumir, sino CONSERVAR la información para una síntesis posterior.
@@ -469,7 +484,7 @@ PERSONA A: {resumen_corto}
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            print(f"⚠️ Error al extraer notas del fragmento: {e}")
+            log_step(f"⚠️ Error al extraer notas del fragmento (modelo: {target_model}): {e}")
             return fragmento[:2000] # Fallback: más texto para compensar
 
     def _limpiar_markdown(self, texto: str) -> str:
@@ -488,10 +503,13 @@ PERSONA A: {resumen_corto}
         texto = re.sub(r'\|\|[^|]+\|\|', '', texto)
         texto = re.sub(r'\|\|[A-Za-zÀ-ÿ0-9\s_]+', '', texto) 
         
-        # 4. Elimina cabeceras de metadatos detectadas por palabras clave
-        keywords = ["Metadatos", "Metadata", "JSON", "Cuestionario", "Respuesta JSON", "Metadatos de la reunión"]
-        pattern = r'(?i)\n*(' + '|'.join(keywords) + r'):?.*'
-        texto = re.sub(pattern, '', texto, flags=re.DOTALL)
+        # 4. Elimina cabeceras de metadatos detectadas por palabras clave (solo la línea de la cabecera)
+        # NOTA: NO incluir 'Cuestionario' aquí, porque borra el contenido válido de cuestionarios
+        # NOTA: No usar re.DOTALL para evitar borrar todo el contenido después del keyword
+        keywords = ["Metadatos", "Metadata", "Respuesta JSON", "Metadatos de la reunión"]
+        for kw in keywords:
+            # Solo elimina la línea que contiene el keyword como cabecera
+            texto = re.sub(r'(?im)^.*' + re.escape(kw) + r'.*$', '', texto)
         
         # 4. Elimina cualquier bloque de llaves remanente al final del texto si parece JSON
         texto = texto.strip()
@@ -518,8 +536,8 @@ PERSONA A: {resumen_corto}
         # Límite de seguridad para el contexto de un solo bloque
         LIMIT_CHUNKING = 25000 
         
-        # Selección del modelo requerida por el usuario
-        target_model = "gpt-4o-mini" if tipo_audio == "detallado" else "gpt-3.5-turbo"
+        # Selección del modelo desde la configuración (default gpt-4o-mini)
+        target_model = self.model
         
         if len(transcripcion) > LIMIT_CHUNKING:
             print(f"🔄 Transcripción muy larga ({len(transcripcion)} caracteres). Iniciando modo 'Map-Reduce'...")
@@ -538,7 +556,7 @@ PERSONA A: {resumen_corto}
         else:
             transcripcion_reducida = transcripcion
 
-        print(f"📝 Generando resumen y metadatos con OpenAI ({target_model}) para un audio de tipo '{tipo_audio}'...")
+        log_step(f"📝 Generando resumen y metadatos con OpenAI ({target_model}) para un audio de tipo '{tipo_audio}'...")
         
         prompt = self._get_prompt_for_type(tipo_audio, transcripcion_reducida, titulo, participantes)
         prompt = textwrap.dedent(prompt)
@@ -604,5 +622,5 @@ PERSONA A: {resumen_corto}
             print("⚠️ Rate limit en OpenAI. Usando fallback local.")
             return self._generar_resumen_local(transcripcion, tipo_audio)
         except Exception as e:
-            print(f"❌ Error en OpenAI: {e}")
+            log_step(f"❌ Error en OpenAI en Resumen Acompañado: {e}")
             return self._generar_resumen_local(transcripcion, tipo_audio)

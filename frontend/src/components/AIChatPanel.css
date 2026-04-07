@@ -221,7 +221,7 @@
   height: 100%;
   object-fit: contain;
   mix-blend-mode: multiply;
-  filter: brightness(1.1) contrast(1.15);
+  filter: brightness(1.1) contrast(1.2) saturate(1.1);
 }
 
 @keyframes beeFloat {
@@ -252,6 +252,91 @@
   50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.6; }
   100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.3; }
 }
+
+/* Sticky Bee Wrapper */
+.bee-assistant-sticky-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: white; /* Pure white to match the multiply background */
+  margin-top: -24px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f9fafb;
+  animation: slideDownFade 0.3s ease-out;
+}
+
+.bee-assistant-sticky-wrapper .bee-assistant-container {
+  min-height: 220px;
+}
+
+.bee-assistant-sticky-wrapper .bee-robot-wrapper {
+  width: 240px;
+  height: 240px;
+}
+
+/* Header Action Buttons */
+.chat-action-btn {
+  padding: 6px;
+  border-radius: 8px;
+  color: #9ca3af;
+  transition: all 0.2s;
+  background: transparent;
+  border: none;
+}
+.chat-action-btn:hover { color: #f59e0b; background: #fff7ed; }
+.chat-action-btn.active { color: #f59e0b; background: #fef3c7; }
+
+/* History Panel Overlay */
+.history-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: white;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideInLeft 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.history-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-item {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #f3f4f6;
+  background: #fafafa;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.history-item:hover { border-color: #fcd34d; background: #fffbeb; }
+.history-item .title { font-weight: 700; font-size: 13px; color: #374151; margin-bottom: 4px; }
+.history-item .meta { font-size: 10px; color: #9ca3af; display: flex; justify-content: space-between; }
+
+.history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9ca3af;
+  gap: 12px;
+}
+
 
 /* Tooltip for mute button */
 [title] {

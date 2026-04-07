@@ -3,6 +3,7 @@
 import os
 import subprocess
 import tempfile
+import whisper
 import glob
 import shutil
 import time
@@ -32,8 +33,10 @@ class AudioTranscriptor:
         
         # New flag: use OpenAI for transcription too
         use_openai_base = os.getenv("USE_OPENAI_API", "False").lower() == "true"
-        self.use_openai_transcription = os.getenv("USE_OPENAI_TRANSCRIPTION", str(use_openai_base)).lower() == "true"
+        env_val = os.getenv("USE_OPENAI_TRANSCRIPTION")
+        self.use_openai_transcription = (env_val.lower() == "true") if env_val is not None else use_openai_base
         
+        print(f"DEBUG: USE_OPENAI_API={use_openai_base}, USE_OPENAI_TRANSCRIPTION env={env_val}, FINAL={self.use_openai_transcription}")
         print(f"📡 Transcriptor configurado. Dispositivo: {self.device_config.upper()} | OpenAI Transcription: {self.use_openai_transcription}")
 
     def _ensure_torch(self):
@@ -54,7 +57,7 @@ class AudioTranscriptor:
         if self._openai_client is None and self.api_key:
             try:
                 # Use global SSL fix if applied in main.py, or just standard init
-                self._openai_client = OpenAI(api_key=self.api_key)
+                self._openai_client = OpenAI()
             except Exception as e:
                 print(f"⚠️ Error inicializando cliente OpenAI en transcriptor: {e}")
         return self._openai_client

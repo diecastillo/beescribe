@@ -94,7 +94,8 @@ function HomePage() {
         title: item.titulo,
         createdAt: item.fecha_creacion,
         status: item.status,
-        progress: item.progress || 0
+        progress: item.progress || 0,
+        metadatos: item.metadatos
       }));
       setHistory(formattedHistory);
     } catch (err) {
@@ -275,7 +276,7 @@ function HomePage() {
 
           {/* Stats Bar */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+            <div onClick={() => navigate('/statistics')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col cursor-pointer hover:shadow-md transition-shadow">
               <span className="p-1.5 bg-amber-50 w-fit rounded-lg text-amber-500 mb-2">
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75"/></svg>
               </span>
@@ -285,7 +286,7 @@ function HomePage() {
                 <span className="text-emerald-500 text-xs font-bold">+100%</span>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+            <div onClick={() => navigate('/statistics')} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col cursor-pointer hover:shadow-md transition-shadow">
               <span className="p-1.5 bg-amber-50 w-fit rounded-lg text-amber-500 mb-2">
                 <svg className="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               </span>
@@ -320,7 +321,7 @@ function HomePage() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="p-2 bg-gray-50 rounded-lg text-gray-400">
-                        <Icon path={ICONS.file} className="w-4 h-4" />
+                        <Icon path={ICONS[item.metadatos?.tipo_audio] || ICONS.file} className="w-4 h-4" />
                       </span>
                       <div>
                         <h4 className="font-semibold text-sm text-gray-800">{item.title}</h4>
