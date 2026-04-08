@@ -116,16 +116,42 @@ const StatisticsPage = () => {
     };
   }, [meetings, filter]);
 
-  const handleDownloadReport = () => {
+  const handleDownloadReport = async () => {
     const element = document.getElementById('statistics-report');
+    
+    // Convert to a single column layout specifically for the PDF to guarantee zero horizontal cutting
+    const topGrid = element.querySelector('.md\\:grid-cols-3');
+    const bottomGrid = element.querySelector('.lg\\:grid-cols-2');
+    
+    if (topGrid) {
+      topGrid.classList.remove('md:grid-cols-3');
+      topGrid.classList.add('grid-cols-1');
+    }
+    if (bottomGrid) {
+      bottomGrid.classList.remove('lg:grid-cols-2');
+      bottomGrid.classList.add('grid-cols-1');
+    }
+
     const opt = {
-      margin: 1,
+      margin: 0.5,
       filename: `Reporte_BeeScribe_${filter.preset}_${new Date().toLocaleDateString()}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
-    html2pdf().from(element).set(opt).save();
+    
+    await html2pdf().from(element).set(opt).save();
+
+    // Revert to original responsive layout immediately
+    if (topGrid) {
+      topGrid.classList.add('md:grid-cols-3');
+      topGrid.classList.remove('grid-cols-1');
+    }
+    if (bottomGrid) {
+      bottomGrid.classList.add('lg:grid-cols-2');
+      bottomGrid.classList.remove('grid-cols-1');
+    }
   };
 
   if (isLoading) {
@@ -137,7 +163,7 @@ const StatisticsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-gray-100 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
@@ -148,6 +174,9 @@ const StatisticsPage = () => {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
+            <div className="w-20 h-20 flex items-center justify-center overflow-hidden -ml-4">
+              <img src="/LogoBeeScribe.png" alt="Logo" className="w-full h-full object-contain mix-blend-multiply" />
+            </div>
             <h1 className="text-xl font-bold text-gray-800">Estadísticas y Reportes</h1>
           </div>
           <button 
@@ -257,7 +286,7 @@ const StatisticsPage = () => {
                     contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                     cursor={{fill: '#fef3c7'}}
                   />
-                  <Bar dataKey="reuniones" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="reuniones" fill="#fbbf24" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -284,7 +313,7 @@ const StatisticsPage = () => {
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9ca3af'}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12, fill: '#9ca3af'}} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="minutos" stroke="#10b981" fillOpacity={1} fill="url(#colorMin)" strokeWidth={3} />
+                  <Area type="monotone" dataKey="minutos" stroke="#10b981" fillOpacity={1} fill="url(#colorMin)" strokeWidth={3} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -307,6 +336,7 @@ const StatisticsPage = () => {
                     outerRadius={80}
                     paddingAngle={5}
                     dataKey="value"
+                    isAnimationActive={false}
                   >
                     {stats?.typeData?.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../api';
 import { logout } from '../auth/auth';
 import { NotificationsModal } from '../components/HomePageComponents';
-import analisisIcon from '../assets/analisis_icon.png';
+
 
 function ProfilePage() {
   const navigate = useNavigate();
@@ -189,7 +189,7 @@ function ProfilePage() {
         <div className="w-12"></div>
 
         <button className="flex flex-col items-center text-gray-400 gap-0.5" onClick={() => navigate('/')}>
-          <img src={analisisIcon} className="w-5 h-5 object-contain opacity-40" alt="Análisis" />
+          <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" /><path strokeLinecap="round" strokeLinejoin="round" d="M18 9l-5 5-4-4-5 5" /></svg>
           <span className="text-xxs font-semibold">Análisis</span>
         </button>
         <button className="flex flex-col items-center text-amber-500 gap-0.5">

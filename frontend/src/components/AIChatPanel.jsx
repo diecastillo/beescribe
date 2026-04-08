@@ -309,8 +309,8 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
       <div className={`chat-sidebar ${isOpen ? 'open' : ''} shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.1)]`}>
         <div className="chat-sidebar-header">
           <div className="flex items-center gap-3">
-            <div className="bg-amber-400 p-1.5 rounded-lg">
-              <svg className="w-4 h-4 fill-gray-900" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z" /></svg>
+            <div className="w-14 h-14 flex items-center justify-center -ml-2">
+              <img src="/LogoBeeScribe.png" alt="Logo" className="w-full h-full object-contain scale-125" />
             </div>
             <div>
               <h3 className="font-bold text-sm text-gray-800">Asistente Bee-Scribe</h3>
@@ -468,7 +468,7 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
 
           {/* La abeja solo se muestra si el sonido está activo y NO estamos viendo el historial */}
           {!isMuted && !showHistory && (
-            <div className={`bee-assistant-sticky-wrapper ${isSpeaking ? 'active' : ''}`}>
+            <div className={`bee-assistant-wrapper ${isSpeaking ? 'active' : ''}`}>
               <div className="bee-assistant-container">
                 <div className="bee-robot-wrapper">
                   <img 

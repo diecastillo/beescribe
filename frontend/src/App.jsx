@@ -18,6 +18,8 @@ const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 
 // Importa el componente que protege las rutas
 import ProtectedRoute from './auth/ProtectedRoute';
+import { NavigationProvider } from './context/NavigationContext';
+import MainLayout from './components/MainLayout';
 
 // Pantalla de carga simple para el Suspense
 const PageLoader = () => (
@@ -31,36 +33,29 @@ function App() {
   
   return (
     <GoogleOAuthProvider clientId={clientId}>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {/* Rutas públicas */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-  
-          {/* Rutas protegidas */}
-          {/* Todas las rutas dentro de este bloque requerirán autenticación */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<HomePage />} />
-            
-            {/* --- 2. AÑADE LA NUEVA RUTA PROTEGIDA AQUÍ --- */}
-            <Route path="/results/:meetingId" element={<ResultDetailsPage />} />
-            <Route path="/calendar" element={<CalendarPage />} />
-            <Route path="/perfil" element={<ProfilePage />} />
-            <Route path="/statistics" element={<StatisticsPage />} />
-            
-            {/* Si en el futuro tienes más páginas protegidas, irían aquí */}
-            {/* <Route path="/profile" element={<ProfilePage />} /> */}
-          </Route>
-
-
-
-
-  
-          {/* Ruta para cualquier otra URL no definida */}
-          {/* Es una buena práctica redirigir al login o a la home en lugar de mostrar un error */}
-          <Route path="*" element={<LoginPage />} /> 
-        </Routes>
-      </Suspense>
+      <NavigationProvider>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            {/* Rutas públicas */}
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+    
+            {/* Rutas protegidas */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<MainLayout />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/results/:meetingId" element={<ResultDetailsPage />} />
+                <Route path="/calendar" element={<CalendarPage />} />
+                <Route path="/perfil" element={<ProfilePage />} />
+                <Route path="/statistics" element={<StatisticsPage />} />
+              </Route>
+            </Route>
+    
+            {/* Ruta para cualquier otra URL no definida */}
+            <Route path="*" element={<LoginPage />} /> 
+          </Routes>
+        </Suspense>
+      </NavigationProvider>
     </GoogleOAuthProvider>
   );
 }

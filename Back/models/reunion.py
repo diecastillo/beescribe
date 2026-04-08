@@ -25,6 +25,7 @@ class Reunion(Base):
     
     user_id = Column(Integer, ForeignKey("usuarios.id"))
     owner = relationship("Usuario", back_populates="reuniones")
+    transformaciones = relationship("Transformacion", back_populates="reunion", cascade="all, delete-orphan")
 
 class ReunionCompartida(Base):
     __tablename__ = "reuniones_compartidas"

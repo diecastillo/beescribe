@@ -406,10 +406,12 @@ export const NewMeetingModal = ({ isOpen, onClose, onSuccess, initialDate }) => 
 };
 
 export const LoadingScreen = () => (
-  <div className="fixed inset-0 bg-gray-900 bg-opacity-90 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
-    <BeeIcon className="w-48 h-48 animate-float" />
-    <h2 className="text-4xl font-bold text-amber-400 mt-4 animate-pulse">Bee-Scribe</h2>
-    <p className="text-white text-lg mt-2">Extrayendo la miel de tu audio...</p>
+  <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col items-center justify-center backdrop-blur-md">
+    <div className="w-80 h-80 flex items-center justify-center overflow-hidden mb-4 bg-white rounded-3xl shadow-2xl p-4">
+      <img src="/LogoBeeScribe.png" alt="Logo" className="w-full h-full object-contain animate-float mix-blend-multiply" />
+    </div>
+    <h2 className="text-4xl font-bold text-amber-400 animate-pulse uppercase tracking-widest">Bee-Scribe</h2>
+    <p className="text-white text-lg mt-2 font-medium">Extrayendo la miel de tu audio...</p>
   </div>
 );
 export const NotificationsModal = ({ isOpen, onClose }) => {

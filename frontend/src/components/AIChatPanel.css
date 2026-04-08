@@ -50,7 +50,7 @@
   top: 0;
   right: 0;
   height: 100vh;
-  width: 400px;
+  width: 440px;
   background: white;
   z-index: 10001;
   display: flex;
@@ -253,26 +253,25 @@
   100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0.3; }
 }
 
-/* Sticky Bee Wrapper */
-.bee-assistant-sticky-wrapper {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: white; /* Pure white to match the multiply background */
-  margin-top: -24px;
+/* Bee Wrapper (Now Static) */
+.bee-assistant-wrapper {
+  z-index: 10;
+  background: white; 
+  margin-top: 10px;
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid #f9fafb;
   animation: slideDownFade 0.3s ease-out;
+  width: 100%;
 }
 
-.bee-assistant-sticky-wrapper .bee-assistant-container {
-  min-height: 220px;
+.bee-assistant-wrapper .bee-assistant-container {
+  min-height: 160px;
 }
 
-.bee-assistant-sticky-wrapper .bee-robot-wrapper {
-  width: 240px;
-  height: 240px;
+.bee-assistant-wrapper .bee-robot-wrapper {
+  width: 180px;
+  height: 180px;
 }
 
 /* Header Action Buttons */

@@ -12,8 +12,6 @@ class GeneradorMapaMental:
         self.use_openai = mindmap_flag.lower() == "true"
         self.api_key = api_key
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        if "3.5" in self.model:
-            self.model = "gpt-4o-mini"
         self.client = None
         self.export_folder = "mapas_mentales"
         os.makedirs(self.export_folder, exist_ok=True)
@@ -229,7 +227,7 @@ Texto: \"{texto_para_mapa}\"
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {{"role": "user", "content": prompt}}
+                    {"role": "user", "content": prompt}
                 ],
                 max_tokens=600,
                 temperature=0.3

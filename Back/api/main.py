@@ -12,7 +12,7 @@ import pyzipper
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response, StreamingResponse, FileResponse
 from sqlalchemy import text
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -49,6 +49,14 @@ app = FastAPI(title="Meeting Analysis API", version="2.0.0")
 
 from fastapi.staticfiles import StaticFiles
 os.makedirs("uploads/avatars", exist_ok=True)
+
+@app.get("/uploads/avatars/{filename}")
+async def get_avatar(filename: str):
+    filepath = os.path.join("uploads", "avatars", filename)
+    if os.path.exists(filepath):
+        return FileResponse(filepath)
+    return FileResponse("assets/default_avatar.png")
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 cors_origins = [
@@ -268,6 +276,10 @@ class TransformRequest(BaseModel):
     meeting_id: int
     tipo_transformacion: str = Field(..., description="Tipo de transformación: breve, detallado, cuestionario, guion")
 
+from models import Usuario, Reunion, ReunionCompartida, Transformacion
+
+# ... (Previous routes)
+
 @app.post("/meetings/transform", tags=["Meetings"])
 async def transform_meeting(
     request: TransformRequest,
@@ -275,9 +287,8 @@ async def transform_meeting(
     current_user: Usuario = Depends(auth.get_current_user)
 ):
     """
-    Re-procesa la transcripción de una reunión existente para generar un nuevo tipo de salida (cuestionario, guion, etc).
+    Re-procesa la transcripción de una reunión existente para generar un nuevo tipo de salida y LO GUARDA.
     """
-    # 1. Buscar la reunión y verificar propiedad
     meeting = db.query(Reunion).filter(
         Reunion.id == request.meeting_id,
         Reunion.user_id == current_user.id
@@ -286,38 +297,83 @@ async def transform_meeting(
     if not meeting:
         raise HTTPException(status_code=404, detail="Reunión no encontrada")
 
-    # 2. Generar el nuevo contenido usando la transcripción existente
-    # ¡IMPORTANTE! Asegurarse de DECRIPTAR la transcripción antes de mandarla a la IA
     log_step(f"🔄 [Transform] Transformando reunión {request.meeting_id} a '{request.tipo_transformacion}'")
     transcripcion_clara = decrypt_str(meeting.transcripcion)
-    log_step(f"🔄 [Transform] Transcripción descifrada: {len(transcripcion_clara) if transcripcion_clara else 0} caracteres")
+    
     if not transcripcion_clara or not transcripcion_clara.strip():
-        log_step("❌ [Transform] ALERTA - La transcripción está vacía después de descifrar!")
         raise HTTPException(status_code=400, detail="La transcripción de esta reunión está vacía.")
 
-    
     loop = asyncio.get_event_loop()
     with ThreadPoolExecutor() as executor:
-        # Reutilizamos el generador de resúmenes pero con el nuevo tipo
         future_resumen = loop.run_in_executor(
             executor, 
             generador_resumen.generar_resumen_completo, 
             transcripcion_clara, 
             meeting.titulo, 
-            [], # Participantes no son críticos para transformaciones
+            [], 
             request.tipo_transformacion
         )
         nuevo_contenido_md, nuevos_metadatos = await future_resumen
 
-    log_step(f"✅ [Transform] Resultado para '{request.tipo_transformacion}': {len(nuevo_contenido_md)} caracteres de contenido")
+    # LIMPIEZA: Quitar [PÁGINA] (y variantes comunes de la IA)
+    if nuevo_contenido_md:
+        import re
+        nuevo_contenido_md = re.sub(r'\[PÁGINA\s*\d*\]', '', nuevo_contenido_md, flags=re.IGNORECASE)
+        nuevo_contenido_md = nuevo_contenido_md.replace('[PÁGINA]', '')
+
+    # GUARDAR EN DB
+    nueva_transformacion = Transformacion(
+        reunion_id=meeting.id,
+        tipo=request.tipo_transformacion,
+        contenido_md=nuevo_contenido_md,
+        metadatos=nuevos_metadatos
+    )
+    db.add(nueva_transformacion)
+    db.commit()
+    db.refresh(nueva_transformacion)
+
+    log_step(f"✅ [Transform] Guardada transformación ID {nueva_transformacion.id} para '{request.tipo_transformacion}'")
     
-    # 3. Devolver el resultado (SIN guardar en DB para no sobrescribir el original)
     return {
         "success": True,
-        "tipo": request.tipo_transformacion,
-        "contenido_md": nuevo_contenido_md,
-        "metadatos": nuevos_metadatos
+        "id": nueva_transformacion.id,
+        "tipo": nueva_transformacion.tipo,
+        "contenido_md": nueva_transformacion.contenido_md,
+        "metadatos": nueva_transformacion.metadatos,
+        "fecha_creacion": nueva_transformacion.fecha_creacion
     }
+
+@app.get("/meetings/{meeting_id}/transformations", tags=["Meetings"])
+async def get_transformations(
+    meeting_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(auth.get_current_user)
+):
+    """ Lista todas las transformaciones guardadas para una reunión. """
+    meeting = db.query(Reunion).filter(Reunion.id == meeting_id, Reunion.user_id == current_user.id).first()
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Reunión no encontrada")
+    
+    return meeting.transformaciones
+
+@app.delete("/transformations/{trans_id}", tags=["Meetings"])
+async def delete_transformation(
+    trans_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(auth.get_current_user)
+):
+    """ Borra una transformación específica. """
+    transformation = db.query(Transformacion).join(Reunion).filter(
+        Transformacion.id == trans_id,
+        Reunion.user_id == current_user.id
+    ).first()
+
+    if not transformation:
+        raise HTTPException(status_code=404, detail="Transformación no encontrada")
+    
+    db.delete(transformation)
+    db.commit()
+    return {"success": True, "message": "Transformación eliminada"}
 
 # --- ENDPOINTS DE AUTENTICACIÓN ---
 
@@ -381,6 +437,7 @@ async def read_users_me(current_user: Usuario = Depends(auth.get_current_user)):
     return current_user
 
 from core.logger import log_step
+@app.put("/users/me", tags=["Auth"])
 async def update_user_profile(
     alias: Optional[str] = Form(None),
     foto: Optional[UploadFile] = File(None),
@@ -391,7 +448,11 @@ async def update_user_profile(
         current_user.alias = alias
     
     if foto is not None:
-        ext = os.path.splitext(foto.filename or '.jpg')[1]
+        ext = os.path.splitext(foto.filename or '.jpg')[1].lower()
+        allowed_exts = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+        if ext not in allowed_exts:
+             raise HTTPException(status_code=400, detail=f"Extensión {ext} no permitida. Use: {', '.join(allowed_exts)}")
+
         import uuid
         filename = f"{uuid.uuid4()}{ext}"
         filepath = f"uploads/avatars/{filename}"

@@ -4,11 +4,6 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { register } from '../auth/auth';
 
-const HexagonIcon = () => (
-  <svg className="w-5 h-5 text-amber-500 fill-current" viewBox="0 0 24 24">
-    <path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z" />
-  </svg>
-);
 
 const MailIcon = () => (
   <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -63,10 +58,8 @@ const RegisterPage = () => {
     <div className="flex items-center justify-center min-h-screen bg-gray-100 px-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform transition-all">
         <div className="p-8">
-          {/* Header Title Bar */}
           <div className="flex justify-center items-center gap-1.5 mb-4">
-            <HexagonIcon />
-            <span className="text-gray-600 font-semibold tracking-wide text-sm">Bee-Scribe</span>
+            <span className="text-gray-600 font-bold tracking-wide text-sm uppercase">Bee-Scribe</span>
           </div>
 
           <h2 className="text-2xl font-bold text-gray-800 text-left">Crea tu Cuenta</h2>

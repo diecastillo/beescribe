@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import apiClient from '../api';
 import { NewMeetingModal, NotificationsModal } from '../components/HomePageComponents';
 import AIChatPanel from '../components/AIChatPanel';
-import analisisIcon from '../assets/analisis_icon.png';
+
 
 function CalendarPage() {
   const navigate = useNavigate();
@@ -93,19 +93,19 @@ function CalendarPage() {
       {/* --- HEADER --- */}
       <div className="bg-white px-6 py-4 flex justify-between items-center border-b border-gray-100 shadow-sm sticky top-0 z-40">
         <div className="flex items-center gap-2.5">
-          <div className="bg-amber-400 p-2 rounded-xl shadow-sm flex items-center justify-center">
-            <svg className="w-5 h-5 text-gray-900 fill-current" viewBox="0 0 24 24"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z" /></svg>
+          <div className="w-20 h-20 flex items-center justify-center overflow-hidden -ml-4">
+            <img src="/LogoBeeScribe.png" alt="Logo" className="w-full h-full object-contain mix-blend-multiply" />
           </div>
           <h2 className="text-lg font-bold text-gray-800">Bee-Scribe</h2>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setIsNotificationsOpen(true)} className="text-gray-400 hover:text-amber-500 transition-colors">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
           </button>
           <button onClick={() => navigate('/')} className="text-gray-400 hover:text-amber-500 transition-colors">
-            <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+            <svg className="w-6 h-6 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
           </button>
-          <button onClick={() => navigate('/perfil')} className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 border border-gray-100 shadow-sm overflow-hidden">
+          <button onClick={() => navigate('/perfil')} className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 border border-gray-100 shadow-sm overflow-hidden ring-4 ring-gray-50 hover:ring-amber-100 transition-all">
             {userProfile?.foto_perfil ? (
               <img src={`${apiClient.defaults.baseURL.replace('/api', '')}${userProfile.foto_perfil}`} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
@@ -240,7 +240,7 @@ function CalendarPage() {
         </div>
 
         <button className="flex flex-col items-center text-gray-400 gap-0.5" onClick={() => navigate('/')}>
-          <img src={analisisIcon} className="w-5 h-5 object-contain opacity-40" alt="Análisis" />
+          <svg className="w-5 h-5 fill-none stroke-current" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" /><path strokeLinecap="round" strokeLinejoin="round" d="M18 9l-5 5-4-4-5 5" /></svg>
           <span className="text-xxs font-semibold">Análisis</span>
         </button>
         <button className="flex flex-col items-center text-gray-400 gap-0.5" onClick={() => navigate('/perfil')}>

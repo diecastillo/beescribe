@@ -25,10 +25,7 @@ class GeneradorResumenAvanzado:
                 raise ValueError("La clave de API de OpenAI es obligatoria cuando USE_OPENAI_SUMMARY=True.")
             self.api_key = api_key
             self.client = None
-            # Forzamos gpt-4o-mini para asegurar calidad y evitar fallos de contexto antiguos
             self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            if "3.5" in self.model:
-                self.model = "gpt-4o-mini"
             print(f"✅ Generador de resúmenes con OpenAI listo (MODO ONLINE). Modelo: {self.model}")
         else:
             print(f"DEBUG: use_openai is False. base_flag={base_flag}, summary_flag={summary_flag}")
@@ -109,12 +106,17 @@ PERSONA A: {resumen_corto}
         """
         Selector de prompts. Devuelve el prompt más adecuado según el tipo de audio.
         """
+        import random
         print(f"🧠 Seleccionando prompt especializado para tipo: '{tipo_audio}'")
         
+        # Inyección de VARIEDAD: Instrucción general para evitar repeticiones
+        variedad_instr = "IMPORTANTE: Varía el enfoque y los detalles. Si generas contenido varias veces, explora diferentes ángulos, secciones o datos específicos del documento para asegurar variedad y evitar repeticiones exactas."
+
         # --- PROMPT PARA REUNIONES (ENFOCADO EN ACCIONES) ---
         if tipo_audio == "reunion":
             return f"""
             Actúa como un analista de negocios experto y secretario de reuniones. A partir de la siguiente transcripción, realiza:
+            {variedad_instr}
 
             - **Tareas:** Tabla con columnas "Acción", "Responsable" y "Plazo".
             
@@ -146,6 +148,7 @@ PERSONA A: {resumen_corto}
         elif tipo_audio == "podcast":
             return f"""
             Actúa como un productor de contenido experto. A partir de la transcripción, realiza:
+            {variedad_instr}
 
             ## Notas del Episodio
             Crea notas atractivas.
@@ -181,6 +184,7 @@ PERSONA A: {resumen_corto}
         elif tipo_audio == "conversacion":
             return f"""
             Actúa como un experto en comunicación. A partir de la transcripción, realiza:
+            {variedad_instr}
 
             ## Síntesis
             Resume los puntos clave.
@@ -216,6 +220,7 @@ PERSONA A: {resumen_corto}
         elif tipo_audio == "breve":
             return f"""
             Actúa como un sintetizador experto. Realiza un resumen corto.
+            {variedad_instr}
 
             ## Resumen Ejecutivo
             - Resumen en 3 frases con los HECHOS más importantes del audio.
@@ -246,40 +251,29 @@ PERSONA A: {resumen_corto}
 
         elif tipo_audio == "detallado":
             return f"""
-            Actúa como un analista senior experto en documentación técnica y corporativa. Tu objetivo es crear un **INFORME EXHAUSTIVO Y MINUCIOSO** que no deje escapar ningún detalle relevante de la sesión de 2 horas.
+            Actúa como un analista senior experto en documentación técnica y corporativa. Tu objetivo es crear un **INFORME EXHAUSTIVO Y MINUCIOSO**.
+            {variedad_instr}
             
             ## Informe de Alta Densidad
-            Divide el informe en secciones lógicas y cronológicas MUY EXTENSAS. Se proactivo y reconstructivo. Para cada bloque de 10-15 minutos de audio:
+            Divide el informe en secciones lógicas y cronológicas MUY EXTENSAS. Se proactivo y reconstructivo.
             - **Resumen Narrativo Profundo:** Un párrafo largo explicativo basado al 100% en lo dicho.
             - **Desglose Exhaustivo de Puntos Clave:** Mínimo 10-15 viñetas detalladas con hechos reales.
             - **Datos Específicos:** Recopila TODAS las cifras, fechas, nombres, herramientas y citas textuales extraídas.
             - **Decisiciones y Acuerdos Detallados:** Describe no solo el qué, sino el por qué según los participantes.
-            - **Análisis de Implicaciones:** Qué significa lo discutido para el proyecto (según se deduce del audio).
             
             REGLA DE ORO: NO inventes información. Si algo no está en el audio, no lo incluyas.
 
             REGLAS DE FORMATO CRÍTICAS:
-            - EL INFORME DEBE SER MASIVO (MAXIMIZA LAS PALABRAS). No resumas, EXPANDE. Queremos que el usuario sienta que tiene una transcripción explicada de 2 horas.
-            - **OBLIGATORIO: DIVIDIR EN PÁGINAS**: Inserta el marcador `---PAGINA---` cada 1000-1500 palabras aproximadamente para crear un libro navegable.
-            Ejemplo: 
-            # Contexto
-            ...
-            ---PAGINA---
-            # Análisis Detallado
-            ...
-            ---PAGINA---
-            # Conclusiones
+            - EL INFORME DEBE SER MASIVO. No resumas, EXPANDE.
+            - **OBLIGATORIO: DIVIDIR EN PÁGINAS**: Inserta el marcador `---PAGINA---` periódicamente.
             
             - NO incluyas ninguna sección llamada "Metadatos" o "JSON" en el Markdown.
             - NO uses bloques de código (```json) en esta sección.
-            
-            IMPORTANTE: Queremos el máximo nivel de detalle posible. 
 
             **Tarea 2: Metadatos (JSON - PARA PROCESAMIENTO INTERNO)**
-            - `temas_clave`: Lista exhaustiva de todos los temas tratados.
+            - `temas_clave`: Lista exhaustiva.
             - `entidades_relevantes`: Personas, cargos, empresas o software mencionados.
             - `nivel_detalle`: "Máximo".
-            - `duración_estimada_relatada`: (ej: "2 horas").
 
             **TRANSCRIPCIÓN:**
             ---
@@ -294,57 +288,41 @@ PERSONA A: {resumen_corto}
 
         elif tipo_audio == "cuestionario":
             return f"""
-            Actúa como un instructor pedagógico experto. Crea un cuestionario de EXACTAMENTE 10 preguntas para validar la comprensión de la siguiente transcripción.
+            Actúa como un instructor pedagógico experto. 
+            
+            TRANSCRIPCIÓN DEL AUDIO:
+            ---
+            {transcripcion}
+            ---
 
-            ## Tarea 1: Cuestionario en Markdown (VISIBLE PARA EL USUARIO)
-            Escribe el cuestionario completo en formato Markdown con este formato:
+            TAREA: Basándote en la transcripción de arriba, crea un cuestionario de EXACTAMENTE 10 preguntas para validar la comprensión.
+            {variedad_instr} 
+            Enfócate en detalles concretos diferentes cada vez.
+
+            FORMATO DE RESPUESTA:
+            Debes proporcionar primero el cuestionario en formato Markdown legible.
+            Al final de todo el texto, añade el separador ||METADATOS|| seguido de un objeto JSON con las preguntas estructuradas.
 
             # 📝 Cuestionario de Evaluación
 
             ## Pregunta 1
-            **¿[texto de la pregunta]?**
-
+            **¿[Pregunta específica sobre un dato del audio]?**
             a) Opción A
             b) Opción B
             c) Opción C
             d) Opción D
 
-            ✅ **Respuesta correcta:** [letra]) [texto de la opción correcta]
-            💡 **Explicación:** [por qué es correcta, citando el audio]
+            ✅ **Respuesta correcta:** [letra]) [texto]
+            💡 **Explicación:** [Por qué es correcta según el audio]
 
             ---
+            (Repite para las 10 preguntas)
 
-            (Repetir para las 10 preguntas)
-
-            REGLAS DE ORO PARA LAS PREGUNTAS:
-            1. **PROHIBIDO** hacer preguntas genéricas (ej: "¿De qué trata el audio?", "¿Cómo es el tono?").
-            2. **OBLIGATORIO** preguntar sobre datos concretos: "¿Qué cifra mencionó X sobre el proyecto Y?", "¿Cuál fue el nombre de la herramienta citada?", "¿Quién dijo que el plazo terminaba en octubre?".
-            3. Si no hay datos numéricos, pregunta sobre opiniones específicas o argumentos detallados de personas nombradas.
-            4. Cada pregunta debe demostrar que el usuario realmente escuchó el contenido detallado.
-            5. Genera EXACTAMENTE 10 preguntas, ni más ni menos.
-            6. Las preguntas deben cubrir distintas partes del audio, no solo el inicio.
-
-            REGLAS DE FORMATO CRÍTICAS:
-            - NO uses bloques de código (```).
-            - NO incluyas "Metadatos" o "JSON" en el texto visible.
-            
-            ## Tarea 2: Estructura de Datos en JSON (PARA PROCESAMIENTO INTERNO)
-            Después del cuestionario markdown, incluye el separador ||METADATOS|| seguido de un JSON con las mismas 10 preguntas en formato estructurado.
-
-            IMPORTANTE: La respuesta final DEBE contener la cadena "||METADATOS||" y justo después el bloque JSON puro.
-
-            **TRANSCRIPCIÓN:**
-            ---
-            {transcripcion}
-            ---
-
-            **FORMATO REQUERIDO:**
-            [CUESTIONARIO COMPLETO EN MARKDOWN CON LAS 10 PREGUNTAS VISIBLES]
             ||METADATOS||
             {{
               "preguntas": [
-                {{ "id": 1, "pregunta": "...?", "opciones": ["...", "...", "...", "..."], "respuesta_correcta": 0, "explicacion": "..." }},
-                ... (así hasta completar las 10 preguntas)
+                {{ "id": 1, "pregunta": "...", "opciones": ["...", "...", "...", "..."], "respuesta_correcta": 0, "explicacion": "..." }},
+                ...
               ],
               "tema_evaluado": "{titulo}",
               "puntos_totales": 10
@@ -355,24 +333,21 @@ PERSONA A: {resumen_corto}
         elif tipo_audio == "guion":
             return f"""
             Actúa como un guionista profesional. Convierte la transcripción en un guion.
+            {variedad_instr} Explora diferentes estilos narrativos o focos de la conversación en cada versión.
 
             ## Guion
-            - **Escena:** Entorno real descrito o deducido del inicio del audio.
-            - **Diálogos:** Formato NOMBRE: Texto. El texto debe ser fiel a las palabras reales de los participantes.
-            - **Acotaciones:** Tono/Acciones reales detectadas en la voz/ambiente.
+            - **Escena:** Entorno real descrito o deducido.
+            - **Diálogos:** Formato NOMBRE: Texto. 
+            - **Acotaciones:** Tono/Acciones reales detectadas.
             
-            REGLA DE ORO: Los personajes DEBEN ser las personas reales que hablan en el audio. El guion debe ser una recreación fiel, no una ficción inventada.
+            REGLA DE ORO: Los personajes DEBEN ser las personas reales que hablan. El guion debe ser una recreación fiel.
 
             REGLAS DE FORMATO CRÍTICAS:
             - NO incluyas ninguna sección llamada "Metadatos" o "JSON" en el Markdown.
-            - NO uses bloques de código (```json) en esta sección.
             
-            IMPORTANTE: No incluyas código JSON ni bloques de código técnico en esta sección.
-
             **Tarea 2: Metadatos (JSON - PARA PROCESAMIENTO INTERNO)**
             - `personajes`: Lista.
-            - `genero_sugerido`: Estilo.
-            - `escenas`: Cantidad.
+            - `genero_sugerido`: Estilo (Varía cada vez: ej. Dramático, Técnico, Informal).
 
             **TRANSCRIPCIÓN:**
             ---
@@ -388,7 +363,8 @@ PERSONA A: {resumen_corto}
         # --- PROMPT POR DEFECTO (GENÉRICO) ---
         else: # "audio_normal" o cualquier otro caso
             return f"""
-            Actúa como un asistente experto en síntesis. Realiza:
+            Actúa como un asistente experto en síntesis.
+            {variedad_instr}
 
             ## Resumen
             Crea un resumen claro.
@@ -397,13 +373,9 @@ PERSONA A: {resumen_corto}
 
             REGLAS DE FORMATO CRÍTICAS:
             - NO incluyas ninguna sección llamada "Metadatos" o "JSON" en el Markdown.
-            - NO uses bloques de código (```json) en esta sección.
-            
-            IMPORTANTE: No incluyas código JSON ni bloques de código técnico en esta sección.
 
             **Tarea 2: Metadatos (JSON - PARA PROCESAMIENTO INTERNO)**
-            Extrae en un objeto JSON:
-            - `personas`, `lugares`, `organizaciones`, `fechas`, `acciones`.
+            - `personas`, `lugares`, `organizaciones`.
             - `tema_general`: Frase corta.
 
             **TRANSCRIPCIÓN:**
@@ -492,38 +464,53 @@ PERSONA A: {resumen_corto}
         import re
         if not texto: return ""
         
-        # 1. Remueve backticks de código para evitar que listas u otro texto se queden atrapados en cajas oscuras.
-        # En lugar de borrar el contenido (lo que borraría datos útiles), simplemente removemos el indicador de bloque de código.
+        # 1. Remueve backticks de código
         texto = texto.replace('```', '')
         
         # 2. Elimina cualquier línea que empiece por { y termine por } (JSON suelto)
         texto = re.sub(r'(?m)^\s*\{.*\}\s*$', '', texto, flags=re.DOTALL)
         
-        # 3. Elimina separadores artificiales inventados por la IA con formato ||TEXTO|| o fugas como ||Objeto
+        # 3. Elimina separadores artificiales internos
+        texto = texto.replace("||METADATOS||", "")
         texto = re.sub(r'\|\|[^|]+\|\|', '', texto)
         texto = re.sub(r'\|\|[A-Za-zÀ-ÿ0-9\s_]+', '', texto) 
         
-        # 4. Elimina cabeceras de metadatos detectadas por palabras clave (solo la línea de la cabecera)
-        # NOTA: NO incluir 'Cuestionario' aquí, porque borra el contenido válido de cuestionarios
-        # NOTA: No usar re.DOTALL para evitar borrar todo el contenido después del keyword
+        # 4. Elimina marcadores específicos solicitados por el usuario
+        texto = texto.replace("---PAGINA---", "")
+        texto = texto.replace("---PÁGINA---", "") # Por si acaso
+        texto = texto.replace("[OBJETO JSON VÁLIDO]", "")
+        texto = texto.replace("[INFORME EXTENSO EN MARKDOWN]", "")
+        texto = texto.replace("[GUION EN MARKDOWN]", "")
+        texto = texto.replace("[RESUMEN EN MARKDOWN]", "")
+        texto = texto.replace("[CUESTIONARIO COMPLETO EN MARKDOWN CON LAS 10 PREGUNTAS VISIBLES]", "")
+        
+        # 5. Elimina líneas de "Tarea X" e instrucciones internas
+        texto = re.sub(r'(?im)^.*Tarea \d:.*$', '', texto)
+        texto = re.sub(r'(?im)^.*FORMATO REQUERIDO:.*$', '', texto)
+        texto = re.sub(r'(?im)^.*TRANSCRIPCIÓN:.*$', '', texto)
+        
+        # 6. Elimina fugas de campos de metadatos (e.g. "nivel_detalle: Máximo")
+        meta_keys = ["nivel_detalle", "temas_clave", "entidades_relevantes", "duración_estimada_relatada", "tema_principal", "sentimiento", "personajes", "genero_sugerido"]
+        for key in meta_keys:
+            texto = re.sub(r'(?im)^.*' + re.escape(key) + r':.*$', '', texto)
+
+        # 7. Cabeceras de metadatos genéricas
         keywords = ["Metadatos", "Metadata", "Respuesta JSON", "Metadatos de la reunión"]
         for kw in keywords:
-            # Solo elimina la línea que contiene el keyword como cabecera
             texto = re.sub(r'(?im)^.*' + re.escape(kw) + r'.*$', '', texto)
         
-        # 4. Elimina cualquier bloque de llaves remanente al final del texto si parece JSON
+        # 8. Elimina cualquier bloque de llaves remanente al final
         texto = texto.strip()
         while texto.endswith('}') and '{' in texto:
             last_bracket = texto.rfind('{')
             potential_json = texto[last_bracket:].strip()
-            # Si parece JSON (tiene comillas y dos puntos), lo podamos
             if '"' in potential_json and ':' in potential_json:
                 texto = texto[:last_bracket].strip()
             else:
                 break
         
-        # 5. Elimina el separador interno
-        texto = texto.replace("||METADATOS||", "")
+        # Limpieza final de saltos de línea excesivos
+        texto = re.sub(r'\n{3,}', '\n\n', texto)
         
         return texto.strip()
 
@@ -565,7 +552,7 @@ PERSONA A: {resumen_corto}
             response = self.client.chat.completions.create(
                 model=target_model,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
+                temperature=0.8,
                 max_tokens=4096,
             )
             

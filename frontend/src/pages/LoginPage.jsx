@@ -5,11 +5,6 @@ import bannerImg from '../assets/login_banner.png';
 import { GoogleLogin } from '@react-oauth/google';
 import apiClient from '../api';
 
-const HexagonIcon = () => (
-  <svg className="w-5 h-5 text-amber-500 fill-current" viewBox="0 0 24 24">
-    <path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z" />
-  </svg>
-);
 
 const MailIcon = () => (
   <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -100,10 +95,8 @@ const LoginPage = () => {
         </div>
 
         <div className="p-8">
-          {/* Header Title Bar */}
           <div className="flex justify-center items-center gap-1.5 mb-4">
-            <HexagonIcon />
-            <span className="text-gray-600 font-semibold tracking-wide text-sm">Bee-Scribe</span>
+            <span className="text-gray-600 font-bold tracking-wide text-sm uppercase">Bee-Scribe</span>
           </div>
 
           <h2 className="text-2xl font-bold text-gray-800 text-left">Bienvenido</h2>
