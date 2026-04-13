@@ -16,18 +16,7 @@ class BuscadorReunionesDB:
         # Empezamos con una consulta base que filtra por el usuario logueado
         query = db.query(Reunion).filter(Reunion.user_id == user_id)
 
-        # 1. Aplicar filtro de texto general (si existe)
-        if consulta:
-            terminos_busqueda = f"%{consulta}%"
-            query = query.filter(
-                or_(
-                    Reunion.titulo.ilike(terminos_busqueda),
-                    Reunion.transcripcion.ilike(terminos_busqueda),
-                    Reunion.resumen_md.ilike(terminos_busqueda)
-                )
-            )
-
-        # 2. Aplicar filtros avanzados (si existen)
+        # 1. Aplicar filtros avanzados (si existen)
         if filtros:
             condiciones_filtro = []
             
@@ -63,7 +52,16 @@ class BuscadorReunionesDB:
             if condiciones_filtro:
                 query = query.filter(and_(*condiciones_filtro))
         
-        # Ordenar siempre por fecha de creación descendente
+        if consulta:
+            terminos_busqueda = f"%{consulta}%"
+            query = query.filter(
+                or_(
+                    Reunion.titulo.ilike(terminos_busqueda),
+                    Reunion.transcripcion.ilike(terminos_busqueda),
+                    Reunion.resumen_md.ilike(terminos_busqueda),
+                )
+            )
+
         resultados = query.order_by(Reunion.fecha_creacion.desc()).all()
         
         print(f"✅ Búsqueda completada, {len(resultados)} resultados encontrados.")

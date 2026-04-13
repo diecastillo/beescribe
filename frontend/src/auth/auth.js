@@ -8,7 +8,7 @@ export const login = async (email, password) => {
   formData.append('username', email); // OJO: FastAPI espera 'username', no 'email'
   formData.append('password', password);
 
-  const response = await apiClient.post('/token', formData, {
+  const response = await apiClient.post('token', formData, {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   });
   
@@ -19,7 +19,7 @@ export const login = async (email, password) => {
 };
 
 export const register = async (email, password) => {
-    return await apiClient.post('/register', { email, password });
+    return await apiClient.post('register', { email, password });
 };
 
 export const logout = () => {

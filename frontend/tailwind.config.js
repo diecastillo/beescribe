@@ -24,10 +24,18 @@ module.exports = {
             transform: 'translateY(0)'
           },
         },
+        'float': {
+          '0%, 100%': {
+            transform: 'translateY(0)'
+          },
+          '50%': {
+            transform: 'translateY(-15px)'
+          },
+        },
       },
-      // Y luego definimos la animación para poder usarla
       animation: {
         'fade-in-up': 'fade-in-up 0.5s ease-out forwards',
+        'float': 'float 2s ease-in-out infinite',
       }
     },
   },

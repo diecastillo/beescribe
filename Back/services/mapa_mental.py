@@ -1,3 +1,4 @@
+from core.logger import log_step
 from openai import OpenAI
 from datetime import datetime
 import os
@@ -6,9 +7,25 @@ from dotenv import load_dotenv
 
 class GeneradorMapaMental:
     def __init__(self, api_key):
-        self.client = OpenAI(api_key=api_key)
+        base_flag = os.getenv("USE_OPENAI_API", "False")
+        mindmap_flag = os.getenv("USE_OPENAI_MINDMAP", base_flag)
+        self.use_openai = mindmap_flag.lower() == "true"
+        self.api_key = api_key
+        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.client = None
         self.export_folder = "mapas_mentales"
         os.makedirs(self.export_folder, exist_ok=True)
+    
+    def _ensure_client(self):
+        if not self.use_openai or self.client is not None:
+            return
+        try:
+            # Lazy initialization to avoid SSLError during startup on some systems
+            self.client = OpenAI()
+        except Exception as e:
+            print(f"❌ Error al inicializar el cliente de OpenAI en MapaMental: {e}")
+            self.use_openai = False
+            self.client = None
     
     def markdown_a_mermaid(self, texto_md):
         graph_lines = ["graph LR"]
@@ -35,10 +52,10 @@ class GeneradorMapaMental:
             indent = len(line) - len(line.lstrip())
             level = indent // 4 + 1
             
-            # Limpiar y acortar texto del nodo
+            # Limpiar y acortar texto del nodo (permitir hasta 60 caracteres)
             node_text = stripped.replace('"', "'").strip()
-            if len(node_text) > 40:  # Limitar longitud
-                node_text = node_text[:37] + "..."
+            if len(node_text) > 60:
+                node_text = node_text[:57] + "..."
             
             current_id = make_id()
             graph_lines.append(f'{current_id}["{node_text}"]')
@@ -48,6 +65,24 @@ class GeneradorMapaMental:
         
         return "\n".join(graph_lines)
     
+    def _generar_mapa_local(self, texto):
+        """Genera un mapa mental básico basado en palabras clave para el modo local."""
+        palabras = texto.replace(".", "").replace(",", "").split()
+        # Filtrar palabras cortas (probablemente stopwords)
+        palabras_clave = [p for p in palabras if len(p) > 5][:5]
+        
+        if not palabras_clave:
+            palabras_clave = ["Sin", "Palabras", "Clave", "Detectadas"]
+
+        # Mock Mermaid Code dinámico
+        mock_mermaid = "graph TD\n"
+        mock_mermaid += '    root[Tema Detectado]\n'
+        
+        for i, palabra in enumerate(palabras_clave):
+            mock_mermaid += f'    root --> N{i}[{palabra}]\n'
+        
+        return mock_mermaid
+
     def generar_html_mermaid(self, mermaid_code, filename):
         contenido_html = f"""
 <!DOCTYPE html>
@@ -82,49 +117,137 @@ class GeneradorMapaMental:
 """
         with open(filename, "w", encoding="utf-8") as f:
             f.write(contenido_html)
-    
-    def generar_mapa_mental(self, texto):
+
+    def _dividir_en_fragmentos(self, texto: str, max_chars: int = 18000) -> list:
+        """Divide un texto largo en fragmentos más pequeños, manejando bloques sin saltos de línea."""
+        if not texto:
+            return []
+            
+        fragmentos = []
+        actual = []
+        caracteres_actual = 0
+        lineas = texto.split('\n')
+        
+        for linea in lineas:
+            if len(linea) > max_chars:
+                if actual:
+                    fragmentos.append('\n'.join(actual))
+                    actual = []
+                    caracteres_actual = 0
+                for i in range(0, len(linea), max_chars):
+                    fragmentos.append(linea[i:i + max_chars])
+                continue
+
+            if caracteres_actual + len(linea) > max_chars and actual:
+                fragmentos.append('\n'.join(actual))
+                actual = []
+                caracteres_actual = 0
+            
+            actual.append(linea)
+            caracteres_actual += len(linea) + 1
+            
+        if actual:
+            fragmentos.append('\n'.join(actual))
+            
+        return [f for f in fragmentos if f.strip()]
+
+    def _extraer_ideas_fuerza(self, fragmento: str) -> str:
+        """Extrae los conceptos clave de un fragmento para el mapa mental."""
         prompt = f"""
-Crea un mapa mental CONCISO del siguiente texto. 
+        Identifica los conceptos, decisiones y temas más importantes del siguiente fragmento de audio.
+        Escribe una lista corta de puntos clave (máximo 10 puntos).
+        
+        TEXTO:
+        ---
+        {fragmento}
+        ---
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=400,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"⚠️ Error al extraer ideas del fragmento: {e}")
+            return fragmento[:500]
 
-REGLAS ESTRICTAS:
-- Solo ideas CLAVE, sin repeticiones
-- Máximo 3 niveles de profundidad
-- Frases cortas (máximo 5 palabras por idea)
+    def generar_mapa_mental(self, texto):
+        self._ensure_client()
+        if not self.use_openai:
+            print("🏠 Generando mapa mental local (API desactivada)...")
+            return self._generar_mapa_local(texto)
+
+        # Límite de seguridad para el contexto de un solo bloque
+        LIMIT_CHUNKING = 25000 
+        
+        if len(texto) > LIMIT_CHUNKING:
+            print(f"🔄 Texto muy largo para el mapa mental ({len(texto)} caracteres). Iniciando modo 'Map-Reduce'...")
+            fragmentos = self._dividir_en_fragmentos(texto, max_chars=18000)
+            print(f"📦 Procesando {len(fragmentos)} bloques para extraer ideas clave...")
+            
+            ideas_consolidadas = []
+            for i, frag in enumerate(fragmentos):
+                print(f"  > Bloque {i+1}/{len(fragmentos)}...")
+                ideas_consolidadas.append(self._extraer_ideas_fuerza(frag))
+            
+            texto_para_mapa = "\n\n".join(ideas_consolidadas)
+            print("🔗 Ideas consolidadas. Generando estructura final del mapa...")
+        else:
+            texto_para_mapa = texto
+
+        prompt = f"""
+Crea un mapa mental del siguiente texto.
+
+REGLAS ESTRICTAS (MUY IMPORTANTE):
+- EXACTAMENTE entre 4 y 6 ideas principales (NO MÁS DE 6)
+- Cada idea principal puede tener entre 1 y 3 subtemas (NO MÁS DE 3)
+- NO añadas un tercer nivel de profundidad
+- Frases cortas (máximo 6 palabras por idea)
+- Sin repeticiones
 - Sin explicaciones adicionales
-- Formato: líneas con guiones y sangrías
+- Solo el formato de guiones y sangrías
 
-Ejemplo de formato:
-- Idea principal 1
-    - Subtema A
-    - Subtema B
-- Idea principal 2
-    - Subtema C
+Ejemplo EXACTO del formato esperado:
+- Tema central uno
+    - Detalle A
+    - Detalle B
+- Tema central dos
+    - Detalle C
+    - Detalle D
+- Tema central tres
+    - Detalle E
 
-Texto: "{texto}"
+Texto: \"{texto_para_mapa}\"
 """
         
         try:
             response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model=self.model,
                 messages=[
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=500,  # Reducido para respuestas más concisas
-                temperature=0.3  # Menos creatividad, más precisión
+                max_tokens=600,
+                temperature=0.3
             )
             
             mapa = response.choices[0].message.content
-            
-            # Generar el código Mermaid a partir del Markdown generado por la IA
             mermaid_code = self.markdown_a_mermaid(mapa)
-            
-            # Devuelve solo el código Mermaid. React se encargará de renderizarlo.
             return mermaid_code
-            
+        
         except Exception as e:
-            print(f"❌ Error generando mapa mental: {e}")
-            return None  # Devuelve None si hay un error.
+            import openai
+            error_str = str(e)
+            
+            # Manejo específico de errores comunes de OpenAI
+            if isinstance(e, openai.BadRequestError) and "context_length" in error_str:
+                print("⚠️ Error de longitud de contexto en OpenAI. Usando fallback local.")
+            elif "429" in error_str or "quota" in error_str.lower():
+                print("⚠️ Cuota excedida en OpenAI. Usando fallback local.")
+            log_step(f"❌ Error inesperado en OpenAI en MapaMental: {e}")
+            return self._generar_mapa_local(texto)
 
 if __name__ == "__main__":
     # Cargar desde .env

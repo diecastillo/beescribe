@@ -17,7 +17,10 @@ if not DATABASE_URL:
 
 # El 'engine' es el punto de entrada principal a la base de datos.
 # Se encarga de la comunicación real entre SQLAlchemy y PostgreSQL.
-engine = create_engine(DATABASE_URL)
+engine_kwargs = {}
+if DATABASE_URL.strip().lower().startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # Cada instancia de SessionLocal representará una sesión de base de datos.
 # Esto es lo que usarás en tus endpoints para realizar consultas.
