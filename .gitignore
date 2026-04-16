@@ -174,3 +174,8 @@ $RECYCLE.BIN/
 tmp_audio/
 Back/tmp_audio/
 Back/uploads/
+# Temporary and Virtualenvs
+venv_rembg/
+clean_new_logo.py
+process_logo.py
+costes_beescribe.csv

@@ -11,7 +11,7 @@ class GeneradorMapaMental:
         mindmap_flag = os.getenv("USE_OPENAI_MINDMAP", base_flag)
         self.use_openai = mindmap_flag.lower() == "true"
         self.api_key = api_key
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         self.client = None
         self.export_folder = "mapas_mentales"
         os.makedirs(self.export_folder, exist_ok=True)

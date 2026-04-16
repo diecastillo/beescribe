@@ -45,6 +45,7 @@ function App() {
               <Route element={<MainLayout />}>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/results/:meetingId" element={<ResultDetailsPage />} />
+                <Route path="/beescribe/:meetingId/:slug" element={<ResultDetailsPage />} />
                 <Route path="/calendar" element={<CalendarPage />} />
                 <Route path="/perfil" element={<ProfilePage />} />
                 <Route path="/statistics" element={<StatisticsPage />} />

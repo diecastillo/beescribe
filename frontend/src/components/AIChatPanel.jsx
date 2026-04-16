@@ -1,6 +1,6 @@
 /* src/components/AIChatPanel.jsx */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import apiClient from '../api';
@@ -13,17 +13,12 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isMuted, setIsMuted] = useState(() => localStorage.getItem('bee_muted') === 'true');
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [hasWelcomed, setHasWelcomed] = useState(false);
   const [showMeetingSelector, setShowMeetingSelector] = useState(false);
   const [availableMeetings, setAvailableMeetings] = useState([]);
   const [selectedMeetingIds, setSelectedMeetingIds] = useState(meetingId ? [meetingId] : []);
   const [meetingFilter, setMeetingFilter] = useState('all');
   const messagesEndRef = useRef(null);
-  const synthRef = useRef(window.speechSynthesis);
-  const audioRef = useRef(null);
-  const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('bee_voice') || 'shimmer');
+  
   const [chatHistory, setChatHistory] = useState(() => {
     const saved = localStorage.getItem('bee_chat_history');
     return saved ? JSON.parse(saved) : [];
@@ -35,7 +30,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   }, [chatHistory]);
 
   const createNewChat = () => {
-    // Solo guardar el historial si hay mensajes del usuario
     if (messages.length > 2 || (messages.length === 2 && messages[1].role === 'user')) {
       const newHistoryEntry = {
         id: Date.now(),
@@ -47,7 +41,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
     }
     setMessages([{ role: 'ai', content: initialMessage || '¡Hola! 🐝 Soy Ali-IA. ¿En qué puedo ayudarte hoy?' }]);
     setSelectedMeetingIds(meetingId ? [meetingId] : []);
-    setHasWelcomed(false);
     setShowHistory(false);
   };
 
@@ -55,7 +48,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
     setMessages(session.messages);
     setSelectedMeetingIds(session.meetings || []);
     setShowHistory(false);
-    setHasWelcomed(true);
   };
 
   const deleteHistorySession = (id, e) => {
@@ -63,17 +55,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
     setChatHistory(prev => prev.filter(s => s.id !== id));
   };
 
-  const voiceOptions = [
-    { id: 'browser', label: 'Navegador (Gratis)' },
-    { id: 'alloy', label: 'Alloy (OA)' },
-    { id: 'echo', label: 'Echo (OA)' },
-    { id: 'fable', label: 'Fable (OA)' },
-    { id: 'onyx', label: 'Onyx (OA)' },
-    { id: 'nova', label: 'Nova (OA)' },
-    { id: 'shimmer', label: 'Shimmer (OA)' },
-  ];
-
-  // Auto-abrir chat con reuniones preseleccionadas desde CalendarPage/HomePage
   useEffect(() => {
     if (autoOpen && preSelectedIds && preSelectedIds.length > 0) {
       setSelectedMeetingIds(preSelectedIds);
@@ -81,117 +62,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
       if (onOpened) onOpened();
     }
   }, [autoOpen, preSelectedIds]);
-
-  // Función para hablar
-  const speak = useCallback(async (text) => {
-    if (isMuted || !text) return;
-    
-    // Parar cualquier audio previo
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-    synthRef.current.cancel();
-
-    const plainText = text.replace(/[*#_\[\]()]/g, '').replace(/`[^`]*`/g, '');
-
-    if (selectedVoice === 'browser') {
-      const utterance = new SpeechSynthesisUtterance(plainText);
-      
-      // Asegurarnos de que las voces estén cargadas
-      const voices = synthRef.current.getVoices();
-      const spanishVoice = voices.find(v => v.lang.includes('es')) || voices.find(v => v.lang.includes('en'));
-      if (spanishVoice) utterance.voice = spanishVoice;
-      
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
-      
-      synthRef.current.speak(utterance);
-    } else {
-      try {
-        setIsSpeaking(true);
-        const response = await apiClient.post('/tts', { text: plainText, voice: selectedVoice }, { responseType: 'blob' });
-        
-        const audioUrl = URL.createObjectURL(response.data);
-        const audio = new Audio(audioUrl);
-        audioRef.current = audio;
-        
-        audio.onended = () => {
-          setIsSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
-        };
-        
-        audio.onerror = (e) => {
-          console.error("Error en objeto Audio:", e);
-          setIsSpeaking(false);
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
-        };
-        
-        await audio.play().catch(err => {
-          console.warn("Autoplay bloqueado o error de audio:", err);
-          setIsSpeaking(false);
-        });
-      } catch (err) {
-        console.error("Error en OpenAI TTS, usando fallback de navegador:", err);
-        const utterance = new SpeechSynthesisUtterance(plainText);
-        const voices = synthRef.current.getVoices();
-        const spanishVoice = voices.find(v => v.lang.includes('es')) || voices[0];
-        if (spanishVoice) utterance.voice = spanishVoice;
-        
-        utterance.onstart = () => setIsSpeaking(true);
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-        
-        synthRef.current.speak(utterance);
-      }
-    }
-  }, [isMuted, selectedVoice]);
-
-
-  // Saludo inicial
-  useEffect(() => {
-    if (isOpen && !hasWelcomed && !isMuted) {
-      speak("¡Hola! Soy Ali, tu asistente IA. ¿En qué puedo ayudarte con esta reunión?");
-      setHasWelcomed(true);
-    }
-  }, [isOpen, hasWelcomed, isMuted, speak]);
-
-  // Sincronizar estado de habla con el sintetizador del navegador o audio de OpenAI
-  useEffect(() => {
-    const checkSpeaking = setInterval(() => {
-      // 1. Verificar si hay audio de OpenAI reproduciéndose
-      if (audioRef.current && !audioRef.current.paused) {
-        if (!isSpeaking) setIsSpeaking(true);
-        return;
-      }
-
-      // 2. Verificar si el navegador está hablando (fallback)
-      const isSynthSpeaking = window.speechSynthesis.speaking;
-      
-      // Solo actualizamos si no hay un audio de OpenAI activo (que ya manejamos arriba)
-      if (!audioRef.current || audioRef.current.paused) {
-        if (isSpeaking !== isSynthSpeaking) {
-          setIsSpeaking(isSynthSpeaking);
-        }
-      }
-    }, 100);
-    return () => clearInterval(checkSpeaking);
-  }, [isSpeaking]);
-
-
-  // Guardar preferencia de mudo y voz
-  useEffect(() => {
-    localStorage.setItem('bee_muted', isMuted);
-    localStorage.setItem('bee_voice', selectedVoice);
-    if (isMuted) {
-      synthRef.current.cancel();
-      if (audioRef.current) audioRef.current.pause();
-      setIsSpeaking(false);
-    }
-  }, [isMuted, selectedVoice]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -203,7 +73,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
     }
   }, [messages, isOpen]);
 
-  // Cargar lista de reuniones cuando se abre el chat
   useEffect(() => {
     if (isOpen) {
       apiClient.get('/meetings/summary-list')
@@ -211,9 +80,9 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
         .catch(err => console.error('Error cargando reuniones:', err));
     }
   }, [isOpen]);
-  // Límite dinámico: reuniones largas (>45min) → máx 2, cortas (≤45min) → máx 3
+
   const getMaxSelections = (currentIds) => {
-    if (currentIds.length === 0) return 3; // Por defecto, permitir hasta 3
+    if (currentIds.length === 0) return 3;
     const selectedMeetings = currentIds
       .map(id => availableMeetings.find(m => m.id === id))
       .filter(Boolean);
@@ -226,7 +95,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   const toggleMeetingSelection = (id) => {
     setSelectedMeetingIds(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
-      // Verificar límite con la nueva selección potencial
       const newIds = [...prev, id];
       const maxAllowed = getMaxSelections(newIds);
       if (newIds.length > maxAllowed) return prev;
@@ -237,7 +105,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
   const getFilteredMeetings = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
     return availableMeetings.filter(m => {
       if (meetingFilter === 'all') return true;
       const date = new Date(m.fecha);
@@ -256,7 +123,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
 
   const selectAllFiltered = () => {
     const filtered = getFilteredMeetings();
-    // Aplicar límite dinámico al seleccionar todas
     const maxForAll = filtered.some(m => m.duracion_min > 45) ? 2 : 3;
     const newIds = filtered.slice(0, maxForAll).map(m => m.id);
     setSelectedMeetingIds(newIds);
@@ -285,7 +151,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
       if (response.data.success) {
         const aiResponse = response.data.respuesta;
         setMessages(prev => [...prev, { role: 'ai', content: aiResponse }]);
-        if (!isMuted) speak(aiResponse);
       } else {
         throw new Error(response.data.detail || "Error desconocido");
       }
@@ -302,7 +167,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
 
   return createPortal(
     <>
-      {/* Botón flotante siempre visible en las páginas permitidas */}
       <button 
         onClick={() => setIsOpen(true)} 
         className={`chat-bubble-button shadow-2xl ${isOpen ? 'hidden' : 'inline-flex'}`}
@@ -321,7 +185,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
         </svg>
       </button>
 
-      {/* Overlay / Backdrop */}
       {isOpen && (
         <div 
           className="chat-sidebar-backdrop"
@@ -329,7 +192,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
         />
       )}
 
-      {/* Sidebar Panel */}
       <div className={`chat-sidebar ${isOpen ? 'open' : ''} shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.1)]`}>
         <div className="chat-sidebar-header">
           <div className="flex items-center gap-3">
@@ -357,27 +219,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </button>
             <div className="w-px h-6 bg-gray-100 mx-1"></div>
-            <select 
-              value={selectedVoice}
-              onChange={(e) => setSelectedVoice(e.target.value)}
-              className="text-[10px] bg-gray-50 border-gray-100 rounded-lg px-2 py-1 font-bold text-gray-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
-              title="Cambiar voz de la IA"
-            >
-              {voiceOptions.map(opt => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
-              ))}
-            </select>
-            <button 
-              onClick={() => setIsMuted(!isMuted)} 
-              className={`p-2 rounded-full transition-all ${isMuted ? 'text-gray-300 hover:bg-gray-100' : 'text-amber-500 bg-amber-50 hover:bg-amber-100'}`}
-              title={isMuted ? "Activar voz" : "Silenciar voz"}
-            >
-              {isMuted ? (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-              ) : (
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
-              )}
-            </button>
             <button 
               onClick={() => setIsOpen(false)} 
               className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
@@ -389,12 +230,10 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
           </div>
         </div>
 
-        {/* Selector de reuniones */}
         {showMeetingSelector && (
           <div className="meeting-selector-panel">
             <div className="meeting-selector-header">
               <span className="text-xs font-bold text-gray-700">Seleccionar Reuniones ({selectedMeetingIds.length}/{currentMaxSelections})</span>
-              <span className="text-[9px] text-gray-400">{currentMaxSelections === 2 ? '⏱ Reuniones largas: máx 2' : '⏱ Reuniones cortas: máx 3'}</span>
               <div className="flex gap-1">
                 <button onClick={selectAllFiltered} className="meeting-selector-action">Todas</button>
                 <button onClick={clearSelections} className="meeting-selector-action">Limpiar</button>
@@ -425,9 +264,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
                       <span className="meeting-selector-title">{m.titulo}</span>
                       <div className="meeting-selector-meta">
                         <span className="meeting-selector-date">{new Date(m.fecha).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                        <span className={`meeting-duration-badge ${m.duracion_min > 45 ? 'long' : 'short'}`}>
-                          {m.duracion_min > 60 ? `${Math.floor(m.duracion_min/60)}h ${m.duracion_min%60}m` : `${m.duracion_min} min`}
-                        </span>
                       </div>
                     </div>
                   </label>
@@ -437,7 +273,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
           </div>
         )}
 
-        {/* Chips de reuniones seleccionadas */}
         {selectedMeetingIds.length > 0 && (
           <div className="selected-meetings-chips">
             {selectedMeetingIds.map(id => {
@@ -453,7 +288,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
         )}
         
         <div className="chat-sidebar-messages">
-          {/* Panel de Historial */}
           {showHistory && (
             <div className="history-overlay">
               <div className="chat-sidebar-header" style={{borderBottom: '1px solid #f3f4f6', padding: '12px 24px'}}>
@@ -465,7 +299,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
               <div className="history-list">
                 {chatHistory.length === 0 ? (
                   <div className="history-empty">
-                    <svg className="w-12 h-12 text-gray-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">Historial vacío</p>
                   </div>
                 ) : (
@@ -481,7 +314,6 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
                       </div>
                       <div className="meta">
                         <span>{new Date(session.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}</span>
-                        <span>{session.messages.length} mensajes</span>
                       </div>
                     </div>
                   ))
@@ -490,18 +322,12 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
             </div>
           )}
 
-          {/* La abeja solo se muestra si el sonido está activo y NO estamos viendo el historial */}
           {!showHistory && (
-            <div className={`bee-assistant-wrapper ${(isSpeaking || isLoading) ? 'active' : ''}`}>
+            <div className={`bee-assistant-wrapper ${isLoading ? 'active' : ''}`}>
               <div className="bee-assistant-container">
                 <div className="bee-robot-wrapper">
-                  <img 
-                    src={(isSpeaking || isLoading) ? "/Abeja-hablando.gif" : "/Abeja-idle.gif"} 
-                    alt="Bee Assistant" 
-                    className="bee-robot-image" 
-                  />
+                  <img src="/Abeja-idle.gif" alt="Bee Assistant" className="bee-robot-image" />
                 </div>
-                {(isSpeaking || isLoading) && <div className="bee-speaking-vibrance"></div>}
               </div>
             </div>
           )}
@@ -575,4 +401,3 @@ const AIChatPanel = ({ meetingId = null, initialMessage = "", preSelectedIds, au
 };
 
 export default AIChatPanel;
-

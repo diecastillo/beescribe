@@ -16,7 +16,7 @@ class ChatService:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.client = None
-        self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         if api_key:
             self.client = openai.OpenAI(api_key=self.api_key)
 

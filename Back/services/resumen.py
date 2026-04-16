@@ -9,6 +9,7 @@ import httpx
 import certifi
 from dotenv import load_dotenv
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 
@@ -25,7 +26,7 @@ class GeneradorResumenAvanzado:
                 raise ValueError("La clave de API de OpenAI es obligatoria cuando USE_OPENAI_SUMMARY=True.")
             self.api_key = api_key
             self.client = None
-            self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            self.model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
             print(f"✅ Generador de resúmenes con OpenAI listo (MODO ONLINE). Modelo: {self.model}")
         else:
             print(f"DEBUG: use_openai is False. base_flag={base_flag}, summary_flag={summary_flag}")
@@ -139,9 +140,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
-            [RESUMEN Y PLAN DE ACCIÓN EN MARKDOWN]
+            Escribe primero el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
+            [SÍNTESIS/RESUMEN EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         # --- PROMPT PARA PODCASTS (ENFOCADO EN CONTENIDO) ---
@@ -175,9 +177,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [NOTAS DEL EPISODIO EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         # --- PROMPT PARA CONVERSACIONES (ENFOCADO EN PERSPECTIVAS) ---
@@ -211,9 +214,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [SÍNTESIS EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         # --- NUEVOS PROMPTS DE TRANSFORMACIÓN (BREVE, DETALLADO, CUESTIONARIO, GUION) ---
@@ -244,9 +248,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [RESUMEN EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         elif tipo_audio == "detallado":
@@ -259,7 +264,6 @@ PERSONA A: {resumen_corto}
             - **Resumen Narrativo Profundo:** Un párrafo largo explicativo basado al 100% en lo dicho.
             - **Desglose Exhaustivo de Puntos Clave:** Mínimo 10-15 viñetas detalladas con hechos reales.
             - **Datos Específicos:** Recopila TODAS las cifras, fechas, nombres, herramientas y citas textuales extraídas.
-            - **Decisiciones y Acuerdos Detallados:** Describe no solo el qué, sino el por qué según los participantes.
             
             REGLA DE ORO: NO inventes información. Si algo no está en el audio, no lo incluyas.
 
@@ -281,9 +285,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [INFORME EXTENSO EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         elif tipo_audio == "cuestionario":
@@ -355,9 +360,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [GUION EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
         # --- PROMPT POR DEFECTO (GENÉRICO) ---
@@ -384,9 +390,10 @@ PERSONA A: {resumen_corto}
             ---
 
             **FORMATO REQUERIDO:**
+            Escribe el contenido en Markdown y luego, tras el separador ||METADATOS||, escribe el objeto JSON real. NO escribas el texto "[OBJETO JSON VÁLIDO]".
             [RESUMEN EN MARKDOWN]
             ||METADATOS||
-            [OBJETO JSON VÁLIDO]
+            {{ "json": "actual" }}
             """
 
     def _dividir_en_fragmentos(self, texto: str, max_chars: int = 18000) -> list:
@@ -477,17 +484,21 @@ PERSONA A: {resumen_corto}
         
         # 4. Elimina marcadores específicos solicitados por el usuario
         texto = texto.replace("---PAGINA---", "")
-        texto = texto.replace("---PÁGINA---", "") # Por si acaso
+        texto = texto.replace("---PÁGINA---", "")
         texto = texto.replace("[OBJETO JSON VÁLIDO]", "")
+        texto = texto.replace("[OBJETO JSON]", "")
         texto = texto.replace("[INFORME EXTENSO EN MARKDOWN]", "")
         texto = texto.replace("[GUION EN MARKDOWN]", "")
         texto = texto.replace("[RESUMEN EN MARKDOWN]", "")
+        texto = texto.replace("[SÍNTESIS EN MARKDOWN]", "")
+        texto = texto.replace("[NOTAS DEL EPISODIO EN MARKDOWN]", "")
         texto = texto.replace("[CUESTIONARIO COMPLETO EN MARKDOWN CON LAS 10 PREGUNTAS VISIBLES]", "")
         
         # 5. Elimina líneas de "Tarea X" e instrucciones internas
         texto = re.sub(r'(?im)^.*Tarea \d:.*$', '', texto)
         texto = re.sub(r'(?im)^.*FORMATO REQUERIDO:.*$', '', texto)
         texto = re.sub(r'(?im)^.*TRANSCRIPCIÓN:.*$', '', texto)
+        texto = re.sub(r'(?im)^.*\[OBJETO JSON.*\].*$', '', texto)
         
         # 6. Elimina fugas de campos de metadatos (e.g. "nivel_detalle: Máximo")
         meta_keys = ["nivel_detalle", "temas_clave", "entidades_relevantes", "duración_estimada_relatada", "tema_principal", "sentimiento", "personajes", "genero_sugerido"]
@@ -523,19 +534,23 @@ PERSONA A: {resumen_corto}
         # Límite de seguridad para el contexto de un solo bloque
         LIMIT_CHUNKING = 25000 
         
-        # Selección del modelo desde la configuración (default gpt-4o-mini)
+        # Selección del modelo desde la configuración (default gpt-3.5-turbo)
         target_model = self.model
         
         if len(transcripcion) > LIMIT_CHUNKING:
             print(f"🔄 Transcripción muy larga ({len(transcripcion)} caracteres). Iniciando modo 'Map-Reduce'...")
             fragmentos = self._dividir_en_fragmentos(transcripcion, max_chars=18000)
-            print(f"📦 Texto dividido en {len(fragmentos)} fragmentos. Procesando resúmenes intermedios...")
+            print(f"📦 Texto dividido en {len(fragmentos)} fragmentos. Procesando resúmenes intermedios en PARALELO...")
             
-            resumenes_intermedios = []
-            for i, frag in enumerate(fragmentos):
-                print(f"  > Procesando fragmento {i+1}/{len(fragmentos)}...")
-                resumen_fragmento = self._resumir_fragmento(frag, max_tokens=2000, target_model=target_model)
-                resumenes_intermedios.append(resumen_fragmento)
+            def procesar_con_indice(indice, frag):
+                print(f"  > Iniciando procesamiento de fragmento {indice+1}/{len(fragmentos)}...")
+                res = self._resumir_fragmento(frag, max_tokens=2000, target_model=target_model)
+                print(f"  > Fragmento {indice+1} completado.")
+                return res
+
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                # Ejecutar en paralelo conservando el orden original
+                resumenes_intermedios = list(executor.map(lambda p: procesar_con_indice(*p), enumerate(fragmentos)))
             
             # Unimos los resúmenes para la síntesis final
             print("🔗 Consolidando información para el análisis final...")

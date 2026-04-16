@@ -9,6 +9,7 @@ import {
   NewMeetingModal 
 } from './HomePageComponents';
 import apiClient from '../api';
+import { slugify } from '../utils/stringUtils';
 
 
 const MainLayout = () => {
@@ -61,7 +62,13 @@ const MainLayout = () => {
 
   const handleSelectFromHistory = (meetingId) => {
     setIsHistoryModalOpen(false);
-    navigate(`/results/${meetingId}`);
+    const meeting = history.find(m => m.id === meetingId);
+    if (meeting && meeting.title) {
+      const slug = slugify(meeting.title);
+      navigate(`/beescribe/${meetingId}/${slug}`);
+    } else {
+      navigate(`/results/${meetingId}`);
+    }
   };
 
   const handleHistorySearch = async ({ consulta = '', filtros = {} }) => {
