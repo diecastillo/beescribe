@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import apiClient from '../api';
+import { slugify } from '../utils/stringUtils';
 import { useNavigate } from 'react-router-dom';
 
 // --- COMPONENTES Y CONSTANTES DE UI ---
@@ -121,6 +122,9 @@ export const HistoryModal = ({ isOpen, onClose, history, onSelect, selectedId, i
                         <strong className="text-base font-bold text-gray-800">{item.title || "Análisis sin título"}</strong>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs text-gray-400">{new Date(item.createdAt).toLocaleString()}</span>
+                          {item.user_id !== currentUserId && item.user_id && (
+                            <span className="text-[9px] px-1.5 py-0.5 bg-blue-50 text-blue-500 rounded font-bold uppercase tracking-tighter">Compartida</span>
+                          )}
                           {item.status !== 'COMPLETED' && (
                             <span className={`text-[10px] font-bold uppercase tracking-wider ${item.status === 'FAILED' ? 'text-red-400' : item.status === 'CANCELLED' ? 'text-gray-400' : 'text-amber-500 animate-pulse'}`}>
                               {item.status === 'PENDING' ? 'En cola' : item.status === 'FAILED' ? 'Error' : item.status === 'CANCELLED' ? 'Cancelado' : 'Procesando'}
@@ -294,7 +298,7 @@ export const NewMeetingModal = ({ isOpen, onClose, onSuccess, initialDate }) => 
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl w-full max-w-md p-6 animate-fade-in relative shadow-2xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6 animate-fade-in relative shadow-2xl" onClick={e => e.stopPropagation()}>
         
         {/* Header */}
         <div className="flex justify-between items-center mb-5">
@@ -416,23 +420,28 @@ export const LoadingScreen = () => (
 );
 export const NotificationsModal = ({ isOpen, onClose }) => {
   const [scheduledMeetings, setScheduledMeetings] = useState([]);
+  const [receivedShares, setReceivedShares] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      fetchScheduled();
+      fetchNotifications();
     }
   }, [isOpen]);
 
-  const fetchScheduled = async () => {
+  const fetchNotifications = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get('/meetings');
-      // Filtrar por estado SCHEDULED
-      const scheduled = response.data.filter(m => m.status === 'SCHEDULED');
+      const [meetingsRes, sharesRes] = await Promise.all([
+        apiClient.get('/meetings'),
+        apiClient.get('/meetings/shared/received')
+      ]);
+      
+      const scheduled = meetingsRes.data.filter(m => m.status === 'SCHEDULED');
       setScheduledMeetings(scheduled);
+      setReceivedShares(sharesRes.data);
     } catch (err) {
-      console.error("Error fetching scheduled meetings:", err);
+      console.error("Error fetching notifications:", err);
     } finally {
       setIsLoading(false);
     }
@@ -474,8 +483,26 @@ export const NotificationsModal = ({ isOpen, onClose }) => {
           </div>
 
           <div>
-            <h4 className="text-xxs font-extrabold text-gray-500 tracking-wider mb-2 mt-4">COMPARTIDAS CONTIGO</h4>
-            <p className="text-gray-400 text-xxs font-semibold">No se te han compartido reuniones.</p>
+            <h4 className="text-xxs font-extrabold text-gray-500 tracking-wider mb-2 mt-4 uppercase">COMPARTIDAS CONTIGO</h4>
+            <div className="flex flex-col gap-2">
+              {isLoading ? (
+                <p className="text-xxs text-gray-400">Cargando...</p>
+              ) : receivedShares.length > 0 ? (
+                receivedShares.map(m => (
+                  <div key={m.id} className="bg-amber-50/50 rounded-2xl p-3 border border-amber-100/50 flex flex-col gap-1 cursor-pointer hover:bg-amber-50 transition-colors" onClick={() => { onClose(); window.location.href = `/beescribe/${m.id}/${slugify(m.titulo)}`; }}>
+                    <div className="flex justify-between items-start">
+                      <h5 className="text-xs font-bold text-gray-800">{m.titulo}</h5>
+                      <span className="text-[8px] bg-amber-200 text-amber-700 px-1 py-0.5 rounded font-bold uppercase tracking-tighter">Nueva</span>
+                    </div>
+                    <span className="text-xxs text-gray-400">
+                      Compartida el {new Date(m.fecha_creacion).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-400 text-xxs font-semibold">No se te han compartido reuniones.</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

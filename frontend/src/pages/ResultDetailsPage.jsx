@@ -9,11 +9,13 @@ import html2pdf from 'html2pdf.js';
 import AIChatPanel from '../components/AIChatPanel';
 import InteractiveQuiz from '../components/InteractiveQuiz';
 import { useNavigation } from '../context/NavigationContext';
+import { slugify } from '../utils/stringUtils';
 import '../App.css'; // Asegúrate de que tus estilos base están aquí
 
 // --- Componentes de UI (pueden moverse a un archivo de componentes compartidos) ---
 const Icon = ({ path, className = "w-6 h-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={path} /></svg>);
 const ICONS = { summary: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", mindmap: "M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122", chevronDown: "M19 9l-7 7-7-7", bolt: "M13 10V3L4 14h7v7l9-11h-7z", question: "M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z", film: "M7 4h10M7 8h10M5 22h14a2 2 0 002-2V4a2 2 0 00-2-2H5a2 2 0 00-2 2v16a2 2 0 002 2z", meeting: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z", podcast: "M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.636 5.636a9 9 0 0112.728 0M18.364 18.364A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636", conversation: "M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z", file: "M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" };
+
 
 mermaid.initialize({
   startOnLoad: true,
@@ -90,11 +92,21 @@ function ResultDetailsPage() {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [previewData, setPreviewData] = useState({ title: '', content: '', type: 'markdown' });
   const [showShareModal, setShowShareModal] = useState(false);
-  const [shareEmail, setShareEmail] = useState('');
-  const [isSharing, setIsSharing] = useState(false);
-  const [shareError, setShareError] = useState(null);
   const [libraryTransformations, setLibraryTransformations] = useState([]); // Biblioteca de contenidos guardados
   const [isRefreshingLibrary, setIsRefreshingLibrary] = useState(false);
+  
+  // Registrar el acceso por link cuando se abre el modal
+  useEffect(() => {
+    if (showShareModal) {
+      apiClient.post(`/meetings/${meetingId}/share`, { email: "link-shared" })
+        .catch(err => console.error("Error activando link compartido:", err));
+    }
+  }, [showShareModal, meetingId]);
+
+  const getFriendlyUrl = () => {
+    const slug = slugify(meeting?.title || "estudio");
+    return `${window.location.origin}/beescribe/${meetingId}/${slug}`;
+  };
 
   const cleanMarkdown = (text) => {
     if (!text) return '';
@@ -115,22 +127,6 @@ function ResultDetailsPage() {
       .trim();
   };
 
-
-  const handleShare = async () => {
-    if (!shareEmail) return;
-    setIsSharing(true);
-    setShareError(null);
-    try {
-      await apiClient.post(`/meetings/${meetingId}/share`, { email: shareEmail });
-      setShowShareModal(false);
-      setShareEmail('');
-      alert("¡Estudio compartido con éxito! 🐝");
-    } catch (err) {
-      setShareError("No se pudo compartir. Verifica el correo e intenta de nuevo.");
-    } finally {
-      setIsSharing(false);
-    }
-  };
 
   const handleDownloadPdf = () => {
     const element = document.getElementById('pdf-preview-content');
@@ -225,6 +221,14 @@ function ResultDetailsPage() {
   const removeGeneratedItem = (id) => {
     setGeneratedContent(prev => prev.filter(item => item.id !== id));
   };
+
+  // Re-dirigir a la URL amigable si entramos por la ID simple
+  useEffect(() => {
+    if (meeting && meeting.title && !window.location.pathname.includes('/beescribe/')) {
+      const slug = slugify(meeting.title);
+      window.history.replaceState(null, '', `/beescribe/${meetingId}/${slug}`);
+    }
+  }, [meeting, meetingId]);
 
   useEffect(() => {
     if (showPdfPreview && previewData.type === 'mermaid' && previewData.content) {
@@ -541,18 +545,72 @@ function ResultDetailsPage() {
 
       {/* SHARE MODAL */}
       {showShareModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[40px] w-full max-w-md p-10 animate-fade-in shadow-2xl border border-gray-50">
-            <h3 className="text-2xl font-black text-gray-800 mb-2">Compartir</h3>
-            <p className="text-gray-400 text-xs mb-8">Invita a colaboradores a revisar este estudio de Bee-Scribe.</p>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[110] flex items-center justify-center p-4" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white rounded-[40px] w-full max-w-sm p-10 animate-fade-in shadow-2xl border border-gray-50 text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+            </div>
+            
+            <h3 className="text-2xl font-black text-gray-800 mb-2">Compartir Link</h3>
+            <p className="text-gray-400 text-xs mb-8 px-4 font-bold">Cualquier persona con este enlace podrá revisar los resultados del análisis.</p>
+            
             <div className="mb-8">
-              <input type="email" placeholder="email@contacto.com" value={shareEmail} onChange={(e) => setShareEmail(e.target.value)} className="w-full bg-gray-50 border-none rounded-2xl p-4 text-sm focus:ring-2 focus:ring-amber-400 transition-all font-bold" />
-              {shareError && <p className="text-red-500 text-[10px] mt-2 font-bold px-2">{shareError}</p>}
+              <div className="bg-gray-50 p-4 rounded-3xl border border-gray-100 mb-4 flex flex-col items-center">
+                <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-2">Enlace de acceso rápido</span>
+                <p className="text-xs font-bold text-gray-600 break-all select-all px-2 leading-relaxed">
+                  {getFriendlyUrl()}
+                </p>
+              </div>
+              
+              <button 
+                onClick={() => {
+                  const link = getFriendlyUrl();
+                  
+                  const copyToClipboard = async (text) => {
+                    // Intento 1: API Moderna (Navigator)
+                    if (navigator.clipboard && window.isSecureContext) {
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        return true;
+                      } catch (err) {}
+                    }
+
+                    // Intento 2: Fallback Clásico (textarea invisible)
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    textArea.style.top = "0";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    
+                    try {
+                      const successful = document.execCommand('copy');
+                      document.body.removeChild(textArea);
+                      return successful;
+                    } catch (err) {
+                      document.body.removeChild(textArea);
+                      return false;
+                    }
+                  };
+
+                  copyToClipboard(link).then(success => {
+                    if (success) {
+                      alert("¡Enlace copiado! 🐝");
+                    } else {
+                      alert("Error al copiar. Por favor selecciona el link manualmente.");
+                    }
+                  });
+                }}
+                className="w-full bg-amber-400 text-gray-900 py-4 rounded-2xl font-black text-sm shadow-xl hover:bg-amber-500 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                Copiar Enlace
+              </button>
             </div>
-            <div className="flex gap-4">
-              <button onClick={() => setShowShareModal(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs bg-gray-100 text-gray-400 hover:bg-gray-200 transition-all" disabled={isSharing}>Cancelar</button>
-              <button onClick={handleShare} disabled={isSharing || !shareEmail} className="flex-1 py-4 rounded-2xl font-bold text-xs bg-amber-400 text-gray-900 shadow-lg hover:bg-amber-500 transition-all">Compartir</button>
-            </div>
+
+            <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-gray-600 font-extrabold text-[10px] uppercase tracking-widest transition-colors py-2">Cerrar</button>
           </div>
         </div>
       )}

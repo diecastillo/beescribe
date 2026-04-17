@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List # Importa 'List'
 from datetime import datetime # Importa 'datetime'
 import io
+import time
 import pyzipper
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
@@ -21,9 +22,20 @@ from google.auth.transport import requests as google_requests
 try:
     if sys.platform == "darwin":
         ssl._create_default_https_context = ssl._create_unverified_context
-        print("🔧 Aplicado parche de SSL para macOS.")
+        # Añadir rutas comunes de binarios en macOS (Homebrew, etc.)
+        extra_paths = [
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            "/opt/homebrew/sbin"
+        ]
+        current_path = os.environ.get("PATH", "")
+        for p in extra_paths:
+            if os.path.exists(p) and p not in current_path:
+                current_path = f"{p}:{current_path}"
+        os.environ["PATH"] = current_path
+        print(f"🔧 Aplicado parche de SSL y PATH para macOS. PATH: {os.environ.get('PATH')}")
 except Exception as e:
-    print(f"⚠️ No se pudo aplicar parche SSL: {e}")
+    print(f"⚠️ No se pudo aplicar parche de entorno: {e}")
 from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ConfigDict
@@ -39,6 +51,8 @@ from services.mapa_mental import GeneradorMapaMental
 from services.buscador import BuscadorReunionesDB
 from services.chat import ChatService
 from services import auth
+from services.auth import get_current_user
+from services.email_service import email_service
 from services.temp_files import cleanup_temp_audio_dir, get_temp_audio_dir
 
 load_dotenv()
@@ -131,6 +145,7 @@ def _reset_stuck_meetings() -> None:
     Busca reuniones que quedaron en estado 'PROCESSING' y las vuelve a 'PENDING'.
     Esto es útil si el servidor se reinició abruptamente mientras procesaba.
     """
+    start = time.time()
     db = SessionLocal()
     try:
         stuck = db.query(Reunion).filter(Reunion.status == "PROCESSING").all()
@@ -143,7 +158,7 @@ def _reset_stuck_meetings() -> None:
             r.progress = 0
         
         db.commit()
-        print(f"✅ Se resetearon {len(stuck)} reuniones interrumpidas.")
+        print(f"✅ Se resetearon {len(stuck)} reuniones interrumpidas. ({time.time() - start:.2f}s)")
     except Exception as e:
         db.rollback()
         print(f"⚠️ Error al resetear reuniones stuck: {e}")
@@ -152,12 +167,23 @@ def _reset_stuck_meetings() -> None:
 
 @app.on_event("startup")
 async def _startup_tasks():
+    print("🚀 [Startup] Ejecutando tareas iniciales...")
+    overall_start = time.time()
+    
     ttl_minutes = int(os.getenv("AUDIO_TEMP_TTL_MINUTES", "60"))
     interval_seconds = int(os.getenv("AUDIO_CLEANUP_INTERVAL_SECONDS", "300"))
     ttl_seconds = max(60, ttl_minutes * 60)
     get_temp_audio_dir()
+    
+    start = time.time()
     _migrate_meetings_encryption_to_plaintext()
+    print(f"📊 [Startup] Migración: {time.time() - start:.2f}s")
+    
+    start = time.time()
     _reset_stuck_meetings()
+    print(f"📊 [Startup] Reset meetings: {time.time() - start:.2f}s")
+    
+    print(f"✅ [Startup] Tareas completadas en {time.time() - overall_start:.2f}s")
 
     async def _cleanup_loop():
         while True:
@@ -395,14 +421,31 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/token", response_model=Token, tags=["Auth"])
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    start = time.time()
     user = auth.get_user(db, email=form_data.username)
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+    db_time = time.time() - start
+    
+    if not user:
+         print(f"⚠️ [Login] Usuario no encontrado: {form_data.username} ({db_time:.2f}s)")
+         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+
+    auth_start = time.time()
+    is_valid = await auth.verify_password(form_data.password, user.hashed_password)
+    auth_time = time.time() - auth_start
+    
+    if not is_valid:
+        print(f"⚠️ [Login] Password incorrecto para: {form_data.username} (DB: {db_time:.2f}s, Auth: {auth_time:.2f}s)")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    token_start = time.time()
     access_token = auth.create_access_token(data={"sub": user.email})
+    total_time = time.time() - start
+    print(f"✅ [Login] Exitoso: {user.email} (Total: {total_time:.2f}s | DB: {db_time:.2f}s, Auth: {auth_time:.2f}s)")
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/auth/google", response_model=Token, tags=["Auth"])
@@ -412,14 +455,17 @@ async def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db))
     """
     try:
         # ID token is valid. Get user's Google ID and email.
+        start = time.time()
         idinfo = id_token.verify_oauth2_token(
             request.credential, 
             google_requests.Request(), 
             os.getenv("GOOGLE_CLIENT_ID")
         )
+        google_time = time.time() - start
         email = idinfo['email']
         
         # 1. Buscar o crear el usuario
+        db_start = time.time()
         user = auth.get_user(db, email=email)
         if not user:
             # Crear nuevo usuario si no existe
@@ -427,9 +473,11 @@ async def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db))
             db.add(user)
             db.commit()
             db.refresh(user)
+        db_time = time.time() - db_start
         
         # 2. Generar el JWT local para Bee-Scribe
         access_token = auth.create_access_token(data={"sub": user.email})
+        print(f"✅ [Google Auth] Exitoso: {email} (Google: {google_time:.2f}s, DB: {db_time:.2f}s)")
         return {"access_token": access_token, "token_type": "bearer"}
 
     except ValueError:
@@ -706,13 +754,36 @@ async def get_meeting_by_id(
     """
     Obtiene una reunión específica por su ID, verificando que pertenezca al usuario autenticado.
     """
-    db_meeting = db.query(Reunion).filter(
-        Reunion.id == meeting_id,
-        Reunion.user_id == current_user.id
-    ).first()
+    # 1. Comprobar propiedad directa
+    db_meeting = db.query(Reunion).filter(Reunion.id == meeting_id).first()
 
     if db_meeting is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found or you don't have permission to view it")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    # 2. Comprobar si es el dueño
+    is_owner = db_meeting.user_id == current_user.id
+    
+    # 3. Comprobar si ha sido compartida (por email específico o vía link público)
+    # Si existe CUALQUIER entrada en reuniones_compartidas para esta reunión, 
+    # asumimos que el dueño habilitó el acceso por link (o compartió específicamente).
+    is_shared = db.query(ReunionCompartida).filter(ReunionCompartida.reunion_id == meeting_id).first() is not None
+
+    if not is_owner and not is_shared:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="You don't have permission to view this meeting")
+    
+    # 4. Suscripción Automática: Si es un acceso por link compartido y el usuario no está registrado, lo registramos.
+    # Esto hace que la reunión aparezca en su historial de "Compartidas".
+    if not is_owner and is_shared:
+        user_already_subscribed = db.query(ReunionCompartida).filter(
+            ReunionCompartida.reunion_id == meeting_id,
+            ReunionCompartida.email_destinatario == current_user.email
+        ).first()
+        
+        if not user_already_subscribed:
+            print(f"📥 [Auto-Share] Suscribiendo a {current_user.email} a la reunión {meeting_id}")
+            new_share = ReunionCompartida(reunion_id=meeting_id, email_destinatario=current_user.email)
+            db.add(new_share)
+            db.commit()
     
     # Desencriptar campos para el frontend
     db_meeting.transcripcion = decrypt_str(db_meeting.transcripcion)
@@ -728,29 +799,76 @@ async def share_meeting(
     meeting_id: int, 
     request: ShareRequest, 
     db: Session = Depends(get_db), 
-    current_user: Usuario = Depends(auth.get_current_user)
+    current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Comparte una reunión con otra persona mediante su correo.
+    Comparte una reunión con otra persona mediante su correo y envía una notificación.
     """
     # 1. Verificar propiedad
     meeting = db.query(Reunion).filter(Reunion.id == meeting_id, Reunion.user_id == current_user.id).first()
     if not meeting:
         raise HTTPException(status_code=404, detail="Reunión no encontrada o no tienes permisos")
     
-    # 2. Registrar que fue compartida
+    # 2. Registrar que fue compartida (o habilitar acceso por link)
+    # Si viene el email especial 'link-shared' o cualquier otro, marcamos el acceso.
     existing_share = db.query(ReunionCompartida).filter(
         ReunionCompartida.reunion_id == meeting_id,
         ReunionCompartida.email_destinatario == request.email
     ).first()
     
-    if existing_share:
-        return {"message": f"Ya has compartido esta reunión con {request.email}"}
+    if not existing_share:
+        share = ReunionCompartida(reunion_id=meeting_id, email_destinatario=request.email)
+        db.add(share)
+        db.commit()
+    
+    # 3. Solo enviar email si es una dirección real (no marcadores de link)
+    if "@" in request.email and "." in request.email and request.email != "link-shared":
+        sender_name = current_user.alias or current_user.email.split('@')[0]
+        email_service.send_share_notification(
+            dest_email=request.email,
+            meeting_title=meeting.titulo,
+            sender_name=sender_name,
+            meeting_id=meeting.id
+        )
+
+    return {"success": True, "message": f"Reunión compartida con éxito con {request.email}"}
+
+
+@app.get("/meetings/shared/received", response_model=List[MeetingResponse], tags=["Meetings"])
+async def get_received_shares(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """ Obtiene las reuniones que se han compartido conmigo. """
+    compartidas = db.query(Reunion).join(ReunionCompartida).filter(
+        ReunionCompartida.email_destinatario == current_user.email
+    ).all()
+    
+    for r in compartidas:
+        r.transcripcion = decrypt_str(r.transcripcion)
+        r.resumen_md = decrypt_str(r.resumen_md)
+        r.mapa_mermaid = decrypt_str(r.mapa_mermaid)
         
-    share = ReunionCompartida(reunion_id=meeting_id, email_destinatario=request.email)
-    db.add(share)
-    db.commit()
-    return {"message": f"Reunión compartida con éxito con {request.email}"}
+    return compartidas
+
+
+@app.get("/meetings/shared/sent", tags=["Meetings"])
+async def get_sent_shares(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """ Lista las reuniones que yo he compartido con otros. """
+    shares = db.query(ReunionCompartida).join(Reunion).filter(
+        Reunion.user_id == current_user.id
+    ).all()
+    
+    return [{
+        "id": s.id,
+        "meeting_id": s.reunion_id,
+        "meeting_title": s.reunion.titulo,
+        "email_destinatario": s.email_destinatario,
+        "fecha_compartido": s.fecha_compartido
+    } for s in shares]
 
 
 @app.delete("/meetings/{meeting_id}", tags=["Meetings"])
@@ -802,7 +920,7 @@ async def get_user_meetings(db: Session = Depends(get_db), current_user: Usuario
     reuniones = propias + compartidas
     reuniones.sort(key=lambda x: x.fecha_creacion, reverse=True)
     
-    print(f"📊 Se encontraron {len(reuniones)} reuniones totales ({len(propias)} propias, {len(compartidas)} compartidas).")
+    print(f"📊 [GET /meetings] Usuario {current_user.id} ({current_user.email}) -> {len(reuniones)} totales ({len(propias)} propias, {len(compartidas)} compartidas)")
     
     # Desencriptar campos para el listado (si se incluyen en la respuesta)
     for r in reuniones:
@@ -898,19 +1016,6 @@ async def chat_ai(
         print(f"❌ Error en endpoint de chat: {e}")
         raise HTTPException(status_code=500, detail=f"Error en el chat de IA: {str(e)}")
 
-@app.post("/tts", tags=["Chat"])
-async def text_to_speech(
-    request: TTSRequest,
-    current_user: Usuario = Depends(auth.get_current_user)
-):
-    try:
-        audio_content = chat_service.generate_tts(request.text, request.voice)
-        if not audio_content:
-            raise HTTPException(status_code=500, detail="Error generating audio content")
-            
-        return StreamingResponse(io.BytesIO(audio_content), media_type="audio/mpeg")
-    except Exception as e:
-        print(f"❌ Error en endpoint de TTS: {e}")
-        raise HTTPException(status_code=500, detail=f"Error en servicio de voz: {str(e)}")
+# --- FIN DE ENDPOINTS ---
 
 

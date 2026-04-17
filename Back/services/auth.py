@@ -20,13 +20,16 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # --- Funciones de Utilidad ---
 
-def verify_password(plain_password, hashed_password):
+import asyncio
+
+async def verify_password(plain_password, hashed_password):
     if hashed_password is None:
         return False
-    plain_bytes = (plain_password or "")[:72].encode("utf-8")
+    plain_bytes = (plain_password or "").encode("utf-8")
     hashed_bytes = (hashed_password or "").encode("utf-8")
     try:
-        return bcrypt.checkpw(plain_bytes, hashed_bytes)
+        # Ejecutamos bcrypt en un hilo separado para no bloquear el bucle de eventos async
+        return await asyncio.to_thread(bcrypt.checkpw, plain_bytes, hashed_bytes)
     except Exception:
         return False
 
